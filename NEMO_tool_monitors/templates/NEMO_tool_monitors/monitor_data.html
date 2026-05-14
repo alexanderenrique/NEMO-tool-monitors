@@ -1,0 +1,501 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block extrahead %}
+    <script type="text/javascript" src="{% static 'NEMO_tool_monitors/chart.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'NEMO_tool_monitors/chartjs-adapter-moment.js' %}"></script>
+    <script type="text/javascript" src="{% static 'NEMO_tool_monitors/daterangepicker.js' %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static 'NEMO_tool_monitors/daterangepicker.css' %}" />
+    <link rel="stylesheet" type="text/css" href="{% static 'NEMO_tool_monitors/monitors.css' %}" />
+{% endblock %}
+{% block title %}{{ monitor.name }} data{% endblock %}
+{% block content %}
+    <div class="well well-monitors-dashboard">
+        <ol class="breadcrumb breadcrumb-monitors-dashboard">
+            <li>
+                <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+            </li>
+            <li>
+                <a href="{% url 'tool_monitors_for_tool' monitor.tool.id %}">{{ monitor.tool.name }}</a>
+            </li>
+            {% if monitor.monitor_category %}
+                {% for ancestor in monitor.monitor_category.ancestors %}
+                    <li>
+                        <a href="{% url 'monitors_dashboard' ancestor.id %}">{{ ancestor.name }}</a>
+                    </li>
+                {% endfor %}
+                <li>
+                    <a href="{% url 'monitors_dashboard' monitor.monitor_category.id %}">{{ monitor.monitor_category.name }}</a>
+                </li>
+            {% endif %}
+            <li class="active">{{ monitor.name }}</li>
+        </ol>
+        <div class="panel-body">
+            <div style="margin-bottom: 15px">
+                <div class="form-inline">
+                    <label class="control-label" for="start">Date range:</label>
+                    <div class="input-group" style="margin-right: 10px">
+                        <input class="form-control text-center" type="text" onchange="refresh_page()" id="start" name="start">
+                        <div id="picker-container"
+                             class="invisible"
+                             style="float: left;
+                                    position: relative;
+                                    height: 0;
+                                    width: 100%"></div>
+                        <span class="daterange-calendar input-group-btn">
+                            <button type="button" class="btn btn-default btn-input-white" onclick="open_daterange_picker()">
+                                <i class="glyphicon glyphicon-calendar"></i>
+                            </button>
+                        </span>
+                    </div>
+                    <label class="control-label" for="end" style="margin-right: 10px;">to</label>
+                    <div class="input-group" style="margin-right: 5px;">
+                        <input class="form-control text-center" type="text" onchange="refresh_page()" id="end" name="end">
+                        <span class="daterange-calendar input-group-btn">
+                            <button type="button" class="btn btn-default btn-input-white" onclick="open_daterange_picker()">
+                                <i class="glyphicon glyphicon-calendar"></i>
+                            </button>
+                        </span>
+                    </div>
+                    <div class="visible-sm visible-xs" style="margin-bottom: 15px;"></div>
+                    <label class="control-label" for="refresh-rate">Refresh rate:</label>
+                    <select class="form-control" id="refresh-rate" onchange="update_refresh_rate();refresh_page();">
+                        <option value="" {% if not refresh_rate %}selected{% endif %}>no refresh</option>
+                        <option value="1000" {% if refresh_rate == 1000 %}selected{% endif %}>every second</option>
+                        <option value="5000" {% if refresh_rate == 5000 %}selected{% endif %}>every 5 seconds</option>
+                        <option value="30000" {% if refresh_rate == 30000 %}selected{% endif %}>every 30 seconds</option>
+                        <option value="60000" {% if refresh_rate == 60000 %}selected{% endif %}>every minute</option>
+                        <option value="300000" {% if refresh_rate == 300000 %}selected{% endif %}>every 5 minutes</option>
+                    </select>
+                </div>
+            </div>
+            <ul class="nav nav-tabs" id="tabs">
+                <li class="{% if tab == 'chart' %}active{% endif %}">
+                    <a href="#chart-tab">Chart</a>
+                </li>
+                <li class="{% if tab == 'data' %}active{% endif %}">
+                    <a href="#data-tab">Data</a>
+                </li>
+                <li class="{% if tab == 'alert' %}active{% endif %}">
+                    <a href="#alert-tab">Alert log</a>
+                </li>
+                {% if can_upload %}
+                    <li class="{% if tab == 'upload' %}active{% endif %}">
+                        <a href="#upload-tab">Upload</a>
+                    </li>
+                {% endif %}
+            </ul>
+            <div id="no-monitor-data" class="tab-content panel panel-default panel-tab-content" style="display: none">
+                <div class="panel-body">
+                    <i>There is no data to display. Try selecting a different date range</i>
+                </div>
+            </div>
+            <div id="monitor-data" class="tab-content panel panel-default panel-tab-content" style="margin-bottom: 0">
+                <div class="tab-pane{% if tab == 'chart' %} active{% endif %}" id="chart-tab">
+                    <div class="panel-body">
+                        <div class="text-right">
+                            <div class="form-inline">
+                                <label class="control-label" for="chart-step">Display every</label>
+                                <input class="form-control input-sm"
+                                       id="chart-step"
+                                       type="number"
+                                       value="{{ chart_step }}"
+                                       onchange="refresh_page()"
+                                       min="1"
+                                       max="1440" />
+                                <label class="control-label">data point</label>
+                            </div>
+                        </div>
+                        <div>
+                            <canvas id="monitor-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane{% if tab == 'data' %} active{% endif %}" id="data-tab">
+                    <div class="panel-body">
+                        <div class="text-right">
+                            <div>
+                                {% url 'export_monitor_data' monitor.id as export_url %}
+                                {% button type="export" value="Export" onclick="refresh_page();window.open(get_base_url('"|concat:export_url|concat:"'))" %}
+                            </div>
+                        </div>
+                        <div>
+                            <table id="monitor-table" class="table table-bordered table-hover table-striped" style="margin-top: 20px;">
+                                <thead>
+                                    <tr class="info" style="pointer-events: none;">
+                                        <th>Time</th>
+                                        <th>{{ monitor.data_label|default_if_none:'Value' }}</th>
+                                        <th>Uploaded by</th>
+                                        <th>Uploaded on</th>
+                                        <th>Last edited</th>
+                                        {% if can_upload %}<th></th>{% endif %}
+                                    </tr>
+                                </thead>
+                                <tbody id="monitor-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane{% if tab == 'alert' %} active{% endif %}" id="alert-tab">
+                    <div id="alert-div" class="panel-body"></div>
+                </div>
+                {% if can_upload %}
+                    <div class="tab-pane{% if tab == 'upload' %} active{% endif %}" id="upload-tab">
+                        <div class="panel-body">
+                            <div class="row">
+                                <div class="col-md-5">
+                                    <h4>Add a single data point</h4>
+                                    <form method="POST" action="{% url 'add_monitor_data' monitor.id %}" class="form-horizontal">
+                                        {% csrf_token %}
+                                        <div class="form-group">
+                                            <label class="control-label col-md-4" for="add-value">Value</label>
+                                            <div class="col-md-7">
+                                                <input class="form-control"
+                                                       type="number"
+                                                       step="any"
+                                                       id="add-value"
+                                                       name="value"
+                                                       required />
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label col-md-4" for="add-date">Timestamp</label>
+                                            <div class="col-md-7">
+                                                <input class="form-control"
+                                                       type="text"
+                                                       id="add-date"
+                                                       name="created_date"
+                                                       placeholder="leave blank for now" />
+                                                <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <div class="col-md-offset-4 col-md-7">
+                                                <button type="submit" class="btn btn-success">Add data point</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="col-md-7">
+                                    <h4>Bulk upload (CSV)</h4>
+                                    <form method="POST"
+                                          action="{% url 'upload_monitor_data_csv' monitor.id %}"
+                                          enctype="multipart/form-data"
+                                          class="form-horizontal">
+                                        {% csrf_token %}
+                                        <p class="help-block">
+                                            Two columns: <code>timestamp,value</code>. Header row is optional. Supported
+                                            timestamp formats include <code>YYYY-MM-DD HH:MM</code>,
+                                            <code>YYYY-MM-DDTHH:MM:SS</code>, and <code>MM/DD/YYYY HH:MM</code>.
+                                        </p>
+                                        <div class="form-group">
+                                            <label class="control-label col-md-3" for="csv-file">CSV file</label>
+                                            <div class="col-md-8">
+                                                <input type="file" id="csv-file" name="csv_file" accept=".csv,text/csv" />
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label col-md-3" for="csv-text">or paste CSV</label>
+                                            <div class="col-md-8">
+                                                <textarea class="form-control"
+                                                          id="csv-text"
+                                                          name="csv_text"
+                                                          rows="6"
+                                                          placeholder="2026-05-14 09:00,42.7&#10;2026-05-14 10:00,43.1"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <div class="col-md-offset-3 col-md-8">
+                                                <button type="submit" class="btn btn-primary">Upload</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <script>
+        const now_moment_date = moment();
+        const can_upload = {% if can_upload %}true{% else %}false{% endif %};
+        const csrf_token = '{{ csrf_token }}';
+
+        let tab_jq = $("#tabs a");
+        tab_jq.click(switch_tab);
+        tab_jq.click(refresh_page);
+
+        function set_dates(start, end)
+        {
+            $('#start').val(start.format('{{ datetime_input_js_format }}'));
+            if (!end.isSame(now_moment_date))
+            {
+                $('#end').val(end.format('{{ datetime_input_js_format }}'));
+            }
+            else
+            {
+                $('#end').val('now');
+            }
+            refresh_page();
+        }
+
+        let daterange_picker = $('#picker-container').daterangepicker(
+        {
+            alwaysShowCalendars: true,
+            showDropdowns: true,
+            timePicker: true,
+            timePickerIncrement: 1,
+            autoUpdateInput: false,
+            ranges:
+            {
+               'Last 24 hrs': [moment().subtract(1, 'days'), now_moment_date],
+               'Last 72 hrs': [moment().subtract(3, 'days'), now_moment_date],
+               'Last 7 Days': [moment().subtract(6, 'days'), now_moment_date],
+               'Last 30 Days': [moment().subtract(29, 'days'), now_moment_date],
+               'Today': [moment().startOf('day'), moment().endOf('day')],
+               'Yesterday': [moment().subtract(1, 'days').startOf('day'), moment().subtract(1, 'days').endOf('day')],
+               'This Week': [moment().startOf('week'), moment().endOf('week')],
+               'Last Week': [moment().subtract(7, 'days').startOf('week'), moment().subtract(7, 'days').endOf('week')],
+               'This Month': [moment().startOf('month'), moment().endOf('month')],
+               'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')],
+               'This Year': [moment().startOf('year'), moment().endOf('year')],
+               'Last Year': [moment().subtract(1, 'year').startOf('year'), moment().endOf('year')],
+            }
+        }, set_dates);
+
+        function get_start_end_dates()
+        {
+            const start = moment.utc($("#start").val(), '{{ datetime_input_js_format }}').unix();
+            const end_input = $("#end").val();
+            const end = end_input && end_input !== 'now' ? moment.utc(end_input, '{{ datetime_input_js_format }}').unix() : '';
+            return [start, end];
+        }
+
+        function get_base_url(url)
+        {
+            const refreshRate = $('#refresh-rate').val() || 0;
+            const chartStep = $("#chart-step").val() || 1;
+            const dates = get_start_end_dates();
+            const base_url = url ? url : $("#data-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'data' %}" : $("#chart-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'chart' %}" : $("#alert-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'alert' %}" : "{% url 'monitor_details' monitor.id 'upload' %}";
+            return base_url + "?start=" + dates[0] + "&end=" + dates[1] + "&chart_step=" + chartStep + "&refresh_rate=" + refreshRate;
+        }
+
+        function filter_every_x_point(data)
+        {
+            let chartStep = $("#chart-step").val() || 1;
+            return data.filter((element, index) => {return index % chartStep === 0;});
+        }
+
+        const monitorChart = $("#monitor-chart");
+        let monitorChartObject = null;
+        function update_chart(data)
+        {
+            let ctx = monitorChart[0].getContext("2d");
+            if (monitorChartObject) monitorChartObject.destroy();
+            monitorChartObject = new Chart(ctx,
+                {
+                type: 'line',
+                data:
+                {
+                    labels: filter_every_x_point(data.labels),
+                    datasets: [
+                    {
+                        label: '{{ monitor.name|escapejs }}',
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgb(75, 192, 192)',
+                        data: filter_every_x_point(data.data)
+                    }]
+                },
+                options:
+                {
+                    scales:
+                    {
+                        x:
+                        {
+                            type: 'time',
+                            time:
+                                {
+                                    displayFormats:
+                                        {
+                                            {% for key, value in monitor_date_formats.items %}
+                                                {% if value %}
+                                                    {{ key }}: "{{ value }}",
+                                                {% endif %}
+                                            {% endfor %}
+                                        }
+                                }
+                        },
+                        y:
+                        {
+                            title:
+                            {
+                                display: {% if monitor.data_label %}true{% else %}false{% endif %},
+                                text: '{{ monitor.data_label|default_if_none:""|escapejs }}'
+                            }
+                        }
+                    },
+                    responsive: true,
+                    legend:
+                    {
+                        position: 'top'
+                    },
+                    title:
+                    {
+                        display: true,
+                        text: '{{ monitor.name|escapejs }} Chart'
+                    },
+                    animation:
+                    {
+                        duration: 0
+                    },
+                    datasets:
+                    {
+                        line:
+                        {
+                            borderWidth: 1,
+                            pointRadius: 2
+                        }
+                    }
+                }
+            });
+        }
+
+        function escape_html(str)
+        {
+            return $('<div>').text(str === null || str === undefined ? '' : str).html();
+        }
+
+        function render_row(data, i)
+        {
+            const id = data.ids ? data.ids[i] : '';
+            const time = escape_html(data.labels[i]);
+            const value = escape_html(data.data[i]);
+            const created_by = escape_html((data.created_by || [])[i] || '');
+            const created_on = escape_html((data.created_on || [])[i] || '');
+            const updated_on = escape_html((data.updated_on || [])[i] || '');
+            let actions = '';
+            if (can_upload)
+            {
+                actions = '<td class="text-right" style="white-space:nowrap;">'
+                    + '<button class="btn btn-default btn-xs js-edit" type="button">Edit</button> '
+                    + '<button class="btn btn-danger btn-xs js-delete" type="button">Delete</button>'
+                    + '</td>';
+            }
+            return '<tr data-id="' + id + '" data-value="' + value + '" data-time="' + time + '">'
+                + '<td class="cell-time">' + time + '</td>'
+                + '<td class="cell-value">' + value + '</td>'
+                + '<td>' + created_by + '</td>'
+                + '<td>' + created_on + '</td>'
+                + '<td>' + updated_on + '</td>'
+                + actions
+                + '</tr>';
+        }
+
+        function update_table(data)
+        {
+            let rows = '';
+            for (let i = data.labels.length - 1; i >= 0; i--)
+            {
+                rows += render_row(data, i);
+            }
+            $("#monitor-table-body").html(rows);
+        }
+
+        function refresh_page()
+        {
+            let data_url = get_base_url("{% url 'monitor_chart_data' monitor.id %}");
+            let history_url = get_base_url();
+            history.pushState('', "{{ monitor.name|escapejs }} data", history_url);
+            if ($("#alert-tab").hasClass("active"))
+            {
+                $('#alert-div').load(get_base_url("{% url 'monitor_alert_log' monitor.id %}"));
+                $('#monitor-data').show();
+                $('#no-monitor-data').hide();
+            }
+            else if ($("#upload-tab").hasClass("active"))
+            {
+                $('#monitor-data').show();
+                $('#no-monitor-data').hide();
+            }
+            else
+            {
+                $.ajax(
+                {
+                    url: data_url,
+                    success: function (data)
+                    {
+                        if (data && data.data && data.data.length)
+                        {
+                            $('#monitor-data').show();
+                            $('#no-monitor-data').hide();
+                            update_chart(data);
+                            update_table(data);
+                        }
+                        else
+                        {
+                            $('#monitor-data').hide();
+                            $('#no-monitor-data').show();
+                        }
+                    }
+                });
+            }
+        }
+
+        function open_daterange_picker()
+        {
+            const dates = get_start_end_dates();
+            daterange_picker.data('daterangepicker').setStartDate(moment.unix(dates[0]).utc());
+            daterange_picker.data('daterangepicker').setEndDate(dates[1] ? moment.unix(dates[1]).utc() : now_moment_date);
+            daterange_picker.data('daterangepicker').show();
+        }
+
+        function update_refresh_rate()
+        {
+            set_interval_when_visible(document, refresh_page, $('#refresh-rate').val());
+        }
+
+        if (can_upload)
+        {
+            $('#monitor-table-body').on('click', '.js-edit', function ()
+            {
+                const $row = $(this).closest('tr');
+                const id = $row.data('id');
+                const currentValue = $row.find('.cell-value').text();
+                const currentTime = $row.find('.cell-time').text();
+                const newValue = prompt("New value:", currentValue);
+                if (newValue === null) return;
+                const newTime = prompt("New timestamp (blank = unchanged):", currentTime) || '';
+                $.ajax(
+                {
+                    url: "/monitor/{{ monitor.id }}/data/" + id + "/edit/",
+                    type: 'POST',
+                    data: { value: newValue, created_date: newTime, csrfmiddlewaretoken: csrf_token },
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    success: function () { refresh_page(); },
+                    error: function (xhr) { alert((xhr.responseJSON || {}).error || 'Update failed.'); }
+                });
+            });
+
+            $('#monitor-table-body').on('click', '.js-delete', function ()
+            {
+                const $row = $(this).closest('tr');
+                const id = $row.data('id');
+                if (!confirm('Delete data point ' + id + '?')) return;
+                $.ajax(
+                {
+                    url: "/monitor/{{ monitor.id }}/data/" + id + "/delete/",
+                    type: 'POST',
+                    data: { csrfmiddlewaretoken: csrf_token },
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    success: function () { refresh_page(); },
+                    error: function (xhr) { alert((xhr.responseJSON || {}).error || 'Delete failed.'); }
+                });
+            });
+        }
+
+        set_dates(moment('{{ start|input_date_format }}', '{{ datetime_input_js_format }}'), {% if end %}moment('{{ end|input_date_format }}', '{{ datetime_input_js_format }}'){% else %}now_moment_date{% endif %});
+        update_refresh_rate();
+    </script>
+{% endblock %}

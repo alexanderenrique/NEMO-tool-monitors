@@ -1,0 +1,120 @@
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block extrahead %}
+    <script type="text/javascript" src="{% static 'NEMO_tool_monitors/chart.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'NEMO_tool_monitors/chartjs-adapter-moment.js' %}"></script>
+{% endblock %}
+<div class="panel-body">
+    <h3 class="customization-section-title">Tool monitor data settings</h3>
+    <form method="POST" action="{% url 'customize' 'tool_monitors' %}" class="form-horizontal">
+        {% csrf_token %}
+        <div class="form-group {% if errors.monitor_alert_emails %}has-error{% endif %}">
+            <label class="control-label col-md-3" for="monitor_alert_emails">Monitor alert email(s)</label>
+            <div class="col-md-5">
+                <input type="text"
+                       id="monitor_alert_emails"
+                       name="monitor_alert_emails"
+                       class="form-control"
+                       value="{% if errors.monitor_alert_emails %}{{ errors.monitor_alert_emails.value }}{% else %}{{ monitor_alert_emails }}{% endif %}"
+                       placeholder="monitor_alerts@example.org" />
+            </div>
+            <div class="col-md-offset-3 col-md-9 help-block light-grey">
+                {% if errors.monitor_alert_emails %}
+                    {{ errors.monitor_alert_emails.error }}
+                {% else %}
+                    The email(s) to notify when a monitor alert is raised or reset. A comma-separated list can be used.
+                {% endif %}
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-md-3" for="monitor_default_daterange">Default daterange</label>
+            <div class="col-md-9">
+                <div class="radio">
+                    <label>
+                        <input type="radio"
+                               id="monitor_default_daterange"
+                               name="monitor_default_daterange"
+                               {% if not monitor_default_daterange %}checked{% endif %}
+                               value="">
+                        Last 24 hrs
+                    </label>
+                    <label>
+                        <input type="radio"
+                               name="monitor_default_daterange"
+                               {% if monitor_default_daterange == 'last_72hrs' %}checked{% endif %}
+                               value="last_72hrs">
+                        Last 72 hrs
+                    </label>
+                    <label>
+                        <input type="radio"
+                               name="monitor_default_daterange"
+                               {% if monitor_default_daterange == 'last_week' %}checked{% endif %}
+                               value="last_week">
+                        Last week
+                    </label>
+                    <label>
+                        <input type="radio"
+                               name="monitor_default_daterange"
+                               {% if monitor_default_daterange == 'last_month' %}checked{% endif %}
+                               value="last_month">
+                        Last month
+                    </label>
+                    <label>
+                        <input type="radio"
+                               name="monitor_default_daterange"
+                               {% if monitor_default_daterange == 'last_year' %}checked{% endif %}
+                               value="last_year">
+                        Last year
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-md-3" for="refresh-rate">Default refresh rate:</label>
+            <div class="col-md-3">
+                <select class="form-control" name="monitor_default_refresh_rate" id="refresh-rate">
+                    <option value="" {% if not monitor_default_refresh_rate %}selected{% endif %}>no refresh</option>
+                    <option value="1000" {% if monitor_default_refresh_rate == "1000" %}selected{% endif %}>every second</option>
+                    <option value="5000" {% if monitor_default_refresh_rate == "5000" %}selected{% endif %}>every 5 seconds</option>
+                    <option value="30000" {% if monitor_default_refresh_rate == "30000" %}selected{% endif %}>every 30 seconds</option>
+                    <option value="60000" {% if monitor_default_refresh_rate == "60000" %}selected{% endif %}>every minute</option>
+                    <option value="300000" {% if monitor_default_refresh_rate == "300000" %}selected{% endif %}>every 5 minutes</option>
+                </select>
+            </div>
+        </div>
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <h3 class="customization-section-title">Chart date formats</h3>
+        <div class="col-sm-12 form-group help-block light-grey">
+            These formats are used in charts to display the date/time on the x-axis. See <a href="https://momentjs.com/docs/#/displaying/format/">moment.js format</a> for more details.
+        </div>
+        {% with date_format_list="millisecond second minute hour day week month quarter year" %}
+            {% for date_format in date_format_list.split %}
+                <div class="form-group">
+                    {% with date_format_variable="monitor_format_"|concat:date_format %}
+                        <label class="control-label col-md-3" for="{{ date_format_variable }}">{{ date_format|capfirst }}:</label>
+                        <div class="col-md-4">
+                            <input type="text"
+                                   id="{{ date_format_variable }}"
+                                   name="{{ date_format_variable }}"
+                                   class="form-control"
+                                   value="{{ "tool_monitors"|customization:date_format_variable|default_if_none:"" }}"
+                                   placeholder="" />
+                        </div>
+                    {% endwith %}
+                </div>
+            {% endfor %}
+        {% endwith %}
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <div class="text-center">{% button type="save" value="Save settings" %}</div>
+        <canvas class="hidden" id="customization_chart"></canvas>
+        <script>
+            const customization_chart = new Chart(document.getElementById('customization_chart').getContext('2d'),
+                {
+                    options: {scales: {x: {type: 'time'}}}
+                });
+            for (let [key, value] of Object.entries(customization_chart.scales['x']._adapter.formats())) {
+                $('#monitor_format_' + key).attr('placeholder', value);
+            }
+        </script>
+    </form>
+</div>

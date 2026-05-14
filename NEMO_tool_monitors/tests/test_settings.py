@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.admin",
     "django.contrib.humanize",
-    "NEMO_sensors",
+    "NEMO_tool_monitors.apps.ToolMonitorsConfig",
     "NEMO",
     "rest_framework",
     "django_filters",

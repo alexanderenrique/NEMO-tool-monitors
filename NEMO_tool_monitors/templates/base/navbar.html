@@ -1,0 +1,12 @@
+{% extends 'base/navbar_base.html' %}
+{% load custom_tags_and_filters %}
+{# NEMO Tool Monitors plugin: append a 'Monitors' entry to the main navigation. #}
+{% block navbar_main %}
+    {{ block.super }}
+    {% url 'monitors_dashboard' as monitors_url %}
+    {% if monitors_url %}
+        <li>
+            <a href="{{ monitors_url }}">Monitors</a>
+        </li>
+    {% endif %}
+{% endblock %}

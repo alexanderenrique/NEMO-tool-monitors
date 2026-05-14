@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block title %}{% if monitor %}Edit monitor{% else %}New monitor{% endif %}{% endblock %}
+{% block content %}
+    <div class="well">
+        <ol class="breadcrumb">
+            <li>
+                <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+            </li>
+            <li>
+                <a href="{% url 'tool_monitors_for_tool' tool.id %}">{{ tool.name }}</a>
+            </li>
+            <li class="active">{% if monitor %}Edit {{ monitor.name }}{% else %}New monitor{% endif %}</li>
+        </ol>
+        <form method="POST" class="form-horizontal">
+            {% csrf_token %}
+            {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <div class="form-group">
+                <label class="control-label col-md-3" for="name">Name</label>
+                <div class="col-md-6">
+                    <input type="text"
+                           id="name"
+                           name="name"
+                           class="form-control"
+                           required
+                           value="{{ monitor.name|default:'' }}" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-md-3" for="monitor_category">Category</label>
+                <div class="col-md-6">
+                    <select id="monitor_category" name="monitor_category" class="form-control">
+                        <option value="">(none)</option>
+                        {% for category in categories %}
+                            <option value="{{ category.id }}"
+                                    {% if monitor and monitor.monitor_category_id == category.id %}selected{% endif %}>
+                                {{ category }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-md-3" for="data_label">Data label</label>
+                <div class="col-md-6">
+                    <input type="text"
+                           id="data_label"
+                           name="data_label"
+                           class="form-control"
+                           value="{{ monitor.data_label|default_if_none:'' }}" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-md-3" for="data_prefix">Value prefix</label>
+                <div class="col-md-3">
+                    <input type="text"
+                           id="data_prefix"
+                           name="data_prefix"
+                           class="form-control"
+                           value="{{ monitor.data_prefix|default_if_none:'' }}" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-md-3" for="data_suffix">Value suffix</label>
+                <div class="col-md-3">
+                    <input type="text"
+                           id="data_suffix"
+                           name="data_suffix"
+                           class="form-control"
+                           value="{{ monitor.data_suffix|default_if_none:'' }}"
+                           placeholder="e.g. PSI, kHz, hrs" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-md-3" for="description">Description</label>
+                <div class="col-md-6">
+                    <textarea id="description"
+                              name="description"
+                              class="form-control"
+                              rows="3">{{ monitor.description|default_if_none:'' }}</textarea>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="col-md-offset-3 col-md-6">
+                    <label class="checkbox-inline">
+                        <input type="checkbox"
+                               name="visible"
+                               value="1"
+                               {% if monitor is None or monitor.visible %}checked{% endif %} />
+                        Visible in dashboard
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="col-md-offset-3 col-md-6">
+                    <button class="btn btn-success" type="submit">
+                        {% if monitor %}Save changes{% else %}Create monitor{% endif %}
+                    </button>
+                    <a class="btn btn-default" href="{% url 'tool_monitors_for_tool' tool.id %}">Cancel</a>
+                </div>
+            </div>
+        </form>
+    </div>
+{% endblock %}

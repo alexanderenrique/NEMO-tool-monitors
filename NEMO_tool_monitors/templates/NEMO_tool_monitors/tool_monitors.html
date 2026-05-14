@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block extrahead %}
+    <link rel="stylesheet" type="text/css" href="{% static 'NEMO_tool_monitors/monitors.css' %}" />
+{% endblock %}
+{% block title %}Monitors for {{ tool.name }}{% endblock %}
+{% block content %}
+    <div class="well well-monitors-dashboard">
+        <ol class="breadcrumb breadcrumb-monitors-dashboard">
+            <li>
+                <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+            </li>
+            <li class="active">{{ tool.name }}</li>
+        </ol>
+        <div class="panel-body">
+            <div class="form-inline" style="margin-bottom: 15px;">
+                <h3 style="display:inline-block;margin-right:15px;">Monitors for {{ tool.name }}</h3>
+                {% if can_upload %}
+                    <a class="btn btn-success" href="{% url 'create_monitor' tool.id %}">
+                        <i class="glyphicon glyphicon-plus"></i> New monitor
+                    </a>
+                {% endif %}
+            </div>
+            {% if monitors %}
+                <table class="table table-bordered table-hover table-striped">
+                    <thead>
+                        <tr class="info">
+                            <th>Name</th>
+                            <th>Category</th>
+                            <th>Last reading</th>
+                            <th>Last value</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for monitor in monitors %}
+                            <tr class="{% if monitor.alert_triggered %}danger{% endif %}">
+                                <td>
+                                    <a href="{% url 'monitor_details' monitor.id %}">{{ monitor.name }}</a>
+                                    {% if monitor.description %}<br><small class="text-muted">{{ monitor.description }}</small>{% endif %}
+                                </td>
+                                <td>{{ monitor.monitor_category|default:"-" }}</td>
+                                <td>{{ monitor.last_read|date:"SHORT_DATETIME_FORMAT"|default:"no data" }}</td>
+                                <td>{{ monitor.last_value_display|default:"-" }}</td>
+                                <td class="text-right">
+                                    <a class="btn btn-default btn-xs" href="{% url 'monitor_details' monitor.id %}">View</a>
+                                    {% if can_upload %}
+                                        <a class="btn btn-default btn-xs" href="{% url 'edit_monitor' monitor.id %}">Edit</a>
+                                        <form style="display:inline;"
+                                              method="post"
+                                              action="{% url 'delete_monitor' monitor.id %}"
+                                              onsubmit="return confirm('Delete monitor {{ monitor.name }} and all of its data?');">
+                                            {% csrf_token %}
+                                            <button class="btn btn-danger btn-xs" type="submit">Delete</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="dashboard-no-group-items">
+                    No monitors yet for this tool.
+                    {% if can_upload %}
+                        <br>
+                        <br>
+                        <a class="btn btn-success" href="{% url 'create_monitor' tool.id %}">Create the first monitor</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if alert_logs %}
+                <h4 style="margin-top:25px;">Recent alerts</h4>
+                <ul>
+                    {% for alert in alert_logs %}
+                        <li class="{% if alert.reset %}success-highlight{% else %}danger-highlight{% endif %}">
+                            [{{ alert.monitor.name }}] {{ alert.description }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

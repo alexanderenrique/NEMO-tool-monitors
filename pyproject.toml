@@ -1,12 +1,12 @@
 [project]
-name = "NEMO-sensors"
-version = "1.2.0"
-description = "Plugin for NEMO providing support for connecting to Modbus sensors"
-keywords = ["NEMO"]
+name = "NEMO-tool-monitors"
+version = "0.1.0"
+description = "Plugin for NEMO allowing privileged users to upload tool monitor data points and view them per tool."
+keywords = ["NEMO", "tool monitors", "monitoring"]
 readme = "README.md"
-authors = [{name = "Center for Nanoscale Science and Technology", email = "CNSTapplications@nist.gov"}]
+authors = [{name = "Alex Denton", email = "alexdenton998@gmail.com"}]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Environment :: Web Environment",
     "Intended Audience :: Science/Research",
     "Intended Audience :: System Administrators",
@@ -22,14 +22,12 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "django",
-    "pymodbus"
 ]
 license = {file = "LICENSE"}
 
 [project.urls]
-Homepage = "https://github.com/usnistgov/NEMO-sensors"
-Changelog = "https://github.com/usnistgov/NEMO-sensors/releases"
-Issues = "https://github.com/usnistgov/NEMO-sensors/issues"
+Homepage = "https://github.com/alexanderenrique/NEMO-tool-monitors"
+Issues = "https://github.com/alexanderenrique/NEMO-tool-monitors/issues"
 
 [project.optional-dependencies]
 NEMO-CE = ["NEMO-CE>=7.3.0",]
@@ -37,10 +35,10 @@ NEMO = ["NEMO>=7.3.0",]
 dev-tools = ["pre-commit", "djlint", "black"]
 
 [tool.setuptools.packages.find]
-include = ["NEMO_sensors*"]
+include = ["NEMO_tool_monitors*"]
 
 [tool.setuptools.package-data]
-NEMO_sensors = ["static/**/*", "templates/**/*"]
+NEMO_tool_monitors = ["static/**/*", "templates/**/*"]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

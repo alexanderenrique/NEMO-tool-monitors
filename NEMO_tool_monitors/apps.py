@@ -1,15 +1,13 @@
 from django.apps import AppConfig
 
 
-class SensorsConfig(AppConfig):
-    name = "NEMO_sensors"
-    label = "sensors"
+class ToolMonitorsConfig(AppConfig):
+    name = "NEMO_tool_monitors"
+    label = "tool_monitors"
+    verbose_name = "Tool monitors"
     default_auto_field = "django.db.models.AutoField"
 
     def ready(self):
         from NEMO.plugins.utils import check_extra_dependencies
 
-        """
-        This code will be run when Django starts.
-        """
         check_extra_dependencies(self.name, ["NEMO", "NEMO-CE"])
