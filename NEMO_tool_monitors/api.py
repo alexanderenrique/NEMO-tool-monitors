@@ -109,10 +109,8 @@ class MonitorDataViewSet(ModelViewSet):
         "created_by": key_filters,
         "updated_by": key_filters,
         "value": number_filters,
+        "notes": string_filters,
     }
-
-
-class MonitorAlertEmailViewSet(ModelViewSet):
     filename = "monitor_alert_emails"
     queryset = MonitorAlertEmail.objects.all()
     serializer_class = MonitorAlertEmailSerializer

@@ -12,11 +12,11 @@
                 <li class="active">Monitor Dashboard</li>
             {% else %}
                 <li>
-                    <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+                    <a href="{% url 'tool_monitors' %}">Dashboard</a>
                 </li>
                 {% for ancestor in selected_category.ancestors %}
                     <li>
-                        <a href="{% url 'monitors_dashboard' ancestor.id %}">{{ ancestor.name }}</a>
+                        <a href="{% url 'tool_monitors' ancestor.id %}">{{ ancestor.name }}</a>
                     </li>
                 {% endfor %}
                 <li class="active">{{ selected_category.name }}</li>
@@ -26,7 +26,7 @@
             {% if categories %}
                 {% for category in categories %}
                     <li class="dashboard-category-group-item text-center {% if category.alert_triggered %}alert-danger{% else %}alert-success{% endif %}"
-                        onclick="window.location='{% url 'monitors_dashboard' category.id %}'">{{ category.name }}</li>
+                        onclick="window.location='{% url 'tool_monitors' category.id %}'">{{ category.name }}</li>
                 {% endfor %}
             {% endif %}
             {% if tools_with_monitors %}
@@ -39,22 +39,7 @@
                     </li>
                 {% endfor %}
             {% endif %}
-            {% if monitors %}
-                {% for monitor in monitors %}
-                    <li class="dashboard-monitor-group-item text-center {% if monitor.alert_triggered %}alert-danger{% else %}alert-success{% endif %}"
-                        onclick="window.location='{% url 'monitor_details' monitor.id %}'">
-                        {{ monitor.name }}
-                        <br>
-                        <small>{{ monitor.tool.name }}</small>
-                        <br>
-                        <br>
-                        {{ monitor.last_read|date:"SHORT_DATETIME_FORMAT"|default:"no data" }}
-                        <br>
-                        {{ monitor.last_value_display }}
-                    </li>
-                {% endfor %}
-            {% endif %}
-            {% if not tools_with_monitors and not categories and not monitors %}
+            {% if not tools_with_monitors and not categories %}
                 <div class="dashboard-no-group-items">
                     no items to display.
                     {% if user.is_superuser and not selected_category and "django.contrib.admin"|app_installed %}
@@ -67,7 +52,7 @@
                 </div>
             {% endif %}
         </ul>
-        {% if tools_with_monitors or monitors or categories %}
+        {% if tools_with_monitors or categories %}
             {% if selected_category or alert_logs %}
                 <div class="panel-body">
                     <ul class="nav nav-tabs" id="tabs">

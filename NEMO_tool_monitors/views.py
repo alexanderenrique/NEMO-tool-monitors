@@ -6,8 +6,10 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Set, Tuple
 
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -53,6 +55,20 @@ def _can_upload(user) -> bool:
     return user.is_authenticated and user.has_perm(UPLOAD_PERMISSION)
 
 
+def _post_add_data_redirect(request, monitor: Monitor) -> str:
+    """Prefer returning to the tool monitors page when that form submitted return_to_tool."""
+    raw = request.POST.get("return_to_tool")
+    if raw is None or raw == "":
+        return reverse("monitor_details", args=[monitor.pk, "data"])
+    try:
+        tool_id = int(raw)
+    except (TypeError, ValueError):
+        return reverse("monitor_details", args=[monitor.pk, "data"])
+    if tool_id != monitor.tool_id:
+        return reverse("monitor_details", args=[monitor.pk, "data"])
+    return reverse("tool_monitors_for_tool", args=[tool_id])
+
+
 def _parse_input_datetime(raw: str) -> Optional[datetime]:
     raw = (raw or "").strip()
     if not raw:
@@ -78,7 +94,6 @@ def monitors_dashboard(request, category_id=None):
     if category_id:
         selected_category = get_object_or_404(MonitorCategory, pk=category_id)
     categories = MonitorCategory.objects.filter(parent=category_id)
-    monitors_in_category = Monitor.objects.filter(visible=True, monitor_category_id=category_id).select_related("tool")
     tools_with_monitors = (
         Tool.objects.filter(monitors__visible=True, monitors__monitor_category_id=category_id)
         .distinct()
@@ -88,12 +103,50 @@ def monitors_dashboard(request, category_id=None):
     dictionary = {
         "selected_category": selected_category,
         "categories": categories,
-        "monitors": monitors_in_category,
         "tools_with_monitors": tools_with_monitors,
         "alert_logs": alert_logs,
         "can_upload": _can_upload(request.user),
     }
     return render(request, "NEMO_tool_monitors/monitors.html", dictionary)
+
+
+@login_required
+@permission_required(UPLOAD_PERMISSION, raise_exception=True)
+@require_GET
+def monitors_upload_hub(request):
+    tools = (
+        Tool.objects.filter(monitors__visible=True)
+        .distinct()
+        .order_by("name")
+        .prefetch_related(
+            Prefetch(
+                "monitors",
+                queryset=Monitor.objects.filter(visible=True).order_by("name"),
+            )
+        )
+    )
+    tools_payload = [
+        {
+            "id": tool.id,
+            "name": tool.name,
+            "monitors": [
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "upload_url": reverse("monitor_details", args=[m.id, "upload"]),
+                    "chart_url": reverse("monitor_details", args=[m.id, "chart"]),
+                    "data_url": reverse("monitor_details", args=[m.id, "data"]),
+                }
+                for m in tool.monitors.all()
+            ],
+        }
+        for tool in tools
+    ]
+    return render(
+        request,
+        "NEMO_tool_monitors/monitors_upload_hub.html",
+        {"tools_payload": tools_payload},
+    )
 
 
 @login_required
@@ -107,6 +160,7 @@ def tool_monitors_for_tool(request, tool_id):
         "monitors": monitor_list,
         "alert_logs": alert_logs,
         "can_upload": _can_upload(request.user),
+        "add_data_action_template": reverse("add_monitor_data", args=[0]),
     }
     return render(request, "NEMO_tool_monitors/tool_monitors.html", dictionary)
 
@@ -145,6 +199,7 @@ def export_monitor_data(request, monitor_id):
     table_result.add_header(("date", "Date"))
     table_result.add_header(("value", "Value"))
     table_result.add_header(("display_value", "Display value"))
+    table_result.add_header(("notes", "Notes"))
     table_result.add_header(("created_by", "Created by"))
     table_result.add_header(("created_on", "Uploaded on"))
     table_result.add_header(("updated_by", "Last edited by"))
@@ -155,6 +210,7 @@ def export_monitor_data(request, monitor_id):
                 "date": data_point.created_date,
                 "value": data_point.value,
                 "display_value": data_point.display_value(),
+                "notes": data_point.notes or "",
                 "created_by": str(data_point.created_by) if data_point.created_by else "",
                 "created_on": data_point.created_on,
                 "updated_by": str(data_point.updated_by) if data_point.updated_by else "",
@@ -179,11 +235,13 @@ def monitor_chart_data(request, monitor_id):
     created_by: List[str] = []
     created_on: List[str] = []
     updated_on: List[str] = []
+    notes: List[str] = []
     qs = get_monitor_data(request, monitor)[0].select_related("created_by", "updated_by").order_by("created_date")
     for point in qs:
         labels.append(format_datetime(point.created_date, "m/d/Y H:i:s"))
         data.append(point.value)
         ids.append(point.id)
+        notes.append(point.notes or "")
         created_by.append(str(point.created_by) if point.created_by else "")
         created_on.append(format_datetime(point.created_on, "m/d/Y H:i:s") if point.created_on else "")
         last_edit = ""
@@ -200,6 +258,7 @@ def monitor_chart_data(request, monitor_id):
             "created_by": created_by,
             "created_on": created_on,
             "updated_on": updated_on,
+            "notes": notes,
         }
     )
 
@@ -273,12 +332,15 @@ def add_monitor_data(request, monitor_id):
         if is_ajax:
             return JsonResponse({"success": False, "error": error}, status=400)
         messages.error(request, error)
-        return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "data"]))
+        return HttpResponseRedirect(_post_add_data_redirect(request, monitor))
+
+    notes = (request.POST.get("notes") or "").strip()
 
     data_point = MonitorData.objects.create(
         monitor=monitor,
         value=value,
         created_date=created_date,
+        notes=notes,
         created_by=request.user,
         updated_by=request.user,
     )
@@ -286,7 +348,7 @@ def add_monitor_data(request, monitor_id):
     if is_ajax:
         return JsonResponse({"success": True, "id": data_point.id})
     messages.success(request, f"Added data point: {data_point.display_value()} at {format_datetime(data_point.created_date)}.")
-    return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "data"]))
+    return HttpResponseRedirect(_post_add_data_redirect(request, monitor))
 
 
 @login_required
@@ -309,7 +371,7 @@ def upload_monitor_data_csv(request, monitor_id):
         messages.error(request, "Please provide a CSV file or paste CSV data.")
         return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "upload"]))
 
-    rows: List[Tuple[datetime, float]] = []
+    rows: List[Tuple[datetime, float, str]] = []
     errors: List[str] = []
     reader = csv.reader(io.StringIO(decoded))
     for line_no, row in enumerate(reader, start=1):
@@ -318,7 +380,7 @@ def upload_monitor_data_csv(request, monitor_id):
         if line_no == 1 and not _looks_like_data_row(row):
             continue
         if len(row) < 2:
-            errors.append(f"Line {line_no}: expected two columns 'timestamp,value', got {row!r}.")
+            errors.append(f"Line {line_no}: expected at least two columns 'timestamp,value' (optional third: notes), got {row!r}.")
             continue
         timestamp = _parse_input_datetime(row[0])
         if timestamp is None:
@@ -329,7 +391,8 @@ def upload_monitor_data_csv(request, monitor_id):
         except ValueError:
             errors.append(f"Line {line_no}: could not parse value '{row[1]}'.")
             continue
-        rows.append((timestamp, value))
+        note = row[2].strip() if len(row) > 2 else ""
+        rows.append((timestamp, value, note))
 
     if errors:
         for err in errors[:10]:
@@ -344,12 +407,13 @@ def upload_monitor_data_csv(request, monitor_id):
 
     with transaction.atomic():
         created = []
-        for timestamp, value in rows:
+        for timestamp, value, note in rows:
             created.append(
                 MonitorData(
                     monitor=monitor,
                     value=value,
                     created_date=timestamp,
+                    notes=note,
                     created_by=request.user,
                     updated_by=request.user,
                 )
@@ -406,6 +470,7 @@ def edit_monitor_data(request, monitor_id, data_id):
         data_point.created_date = created_date
 
     data_point.value = value
+    data_point.notes = (request.POST.get("notes") or "").strip()
     data_point.updated_by = request.user
     data_point.save()
 
@@ -417,6 +482,7 @@ def edit_monitor_data(request, monitor_id, data_id):
                 "value": data_point.value,
                 "display_value": data_point.display_value(),
                 "created_date": format_datetime(data_point.created_date, "m/d/Y H:i:s"),
+                "notes": data_point.notes or "",
             }
         )
     messages.success(request, f"Updated data point {data_point.id}.")
@@ -448,7 +514,7 @@ def delete_monitor_data(request, monitor_id, data_id):
 
 
 @login_required
-@permission_required(UPLOAD_PERMISSION, raise_exception=True)
+@staff_member_required
 @require_http_methods(["GET", "POST"])
 def create_monitor(request, tool_id):
     tool = get_object_or_404(Tool, pk=tool_id)
@@ -456,7 +522,7 @@ def create_monitor(request, tool_id):
 
 
 @login_required
-@permission_required(UPLOAD_PERMISSION, raise_exception=True)
+@staff_member_required
 @require_http_methods(["GET", "POST"])
 def edit_monitor(request, monitor_id):
     monitor = get_object_or_404(Monitor, pk=monitor_id)
@@ -464,7 +530,7 @@ def edit_monitor(request, monitor_id):
 
 
 @login_required
-@permission_required(UPLOAD_PERMISSION, raise_exception=True)
+@staff_member_required
 @require_POST
 def delete_monitor(request, monitor_id):
     monitor = get_object_or_404(Monitor, pk=monitor_id)

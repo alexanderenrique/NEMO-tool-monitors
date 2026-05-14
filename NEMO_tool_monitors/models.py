@@ -136,6 +136,11 @@ class MonitorData(BaseModel):
         help_text="The user who last edited this data point.",
     )
     updated_on = models.DateTimeField(auto_now=True, help_text="The server timestamp when this data point was last edited.")
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional comment about this measurement (not plotted on the chart).",
+    )
 
     def display_value(self):
         return display_monitor_value(self.monitor, self.value)

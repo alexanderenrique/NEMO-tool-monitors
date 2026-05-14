@@ -13,9 +13,10 @@ router.registry.sort(key=sort_urls)
 
 
 urlpatterns = [
-    path("monitors/", views.monitors_dashboard, name="monitors_dashboard"),
-    path("monitors/<int:category_id>/", views.monitors_dashboard, name="monitors_dashboard"),
-    path("monitors/tool/<int:tool_id>/", views.tool_monitors_for_tool, name="tool_monitors_for_tool"),
+    path("tool_monitors/", views.monitors_dashboard, name="tool_monitors"),
+    path("tool_monitors/upload/", views.monitors_upload_hub, name="tool_monitors_upload"),
+    path("tool_monitors/<int:category_id>/", views.monitors_dashboard, name="tool_monitors"),
+    path("tool_monitors/tool/<int:tool_id>/", views.tool_monitors_for_tool, name="tool_monitors_for_tool"),
     path("monitor_details/<int:monitor_id>/", views.monitor_details, name="monitor_details"),
     re_path(
         r"monitor_details/(?P<monitor_id>\d+)/(?P<tab>chart|data|alert|upload)/$",

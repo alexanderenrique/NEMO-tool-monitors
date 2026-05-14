@@ -172,7 +172,7 @@ class MonitorDataAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ["monitor", "created_by", "updated_by"]
     readonly_fields = ["created_on", "updated_on"]
-    search_fields = ("monitor__name", "monitor__tool__name", "created_by__username")
+    search_fields = ("monitor__name", "monitor__tool__name", "created_by__username", "notes")
 
     @display(ordering="monitor__data_prefix", description="Display value")
     def get_display_value(self, obj: MonitorData):

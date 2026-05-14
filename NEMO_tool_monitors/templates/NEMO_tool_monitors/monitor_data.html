@@ -13,7 +13,7 @@
     <div class="well well-monitors-dashboard">
         <ol class="breadcrumb breadcrumb-monitors-dashboard">
             <li>
-                <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+                <a href="{% url 'tool_monitors' %}">Dashboard</a>
             </li>
             <li>
                 <a href="{% url 'tool_monitors_for_tool' monitor.tool.id %}">{{ monitor.tool.name }}</a>
@@ -21,11 +21,11 @@
             {% if monitor.monitor_category %}
                 {% for ancestor in monitor.monitor_category.ancestors %}
                     <li>
-                        <a href="{% url 'monitors_dashboard' ancestor.id %}">{{ ancestor.name }}</a>
+                        <a href="{% url 'tool_monitors' ancestor.id %}">{{ ancestor.name }}</a>
                     </li>
                 {% endfor %}
                 <li>
-                    <a href="{% url 'monitors_dashboard' monitor.monitor_category.id %}">{{ monitor.monitor_category.name }}</a>
+                    <a href="{% url 'tool_monitors' monitor.monitor_category.id %}">{{ monitor.monitor_category.name }}</a>
                 </li>
             {% endif %}
             <li class="active">{{ monitor.name }}</li>
@@ -125,6 +125,7 @@
                                     <tr class="info" style="pointer-events: none;">
                                         <th>Time</th>
                                         <th>{{ monitor.data_label|default_if_none:'Value' }}</th>
+                                        <th>Notes</th>
                                         <th>Uploaded by</th>
                                         <th>Uploaded on</th>
                                         <th>Last edited</th>
@@ -170,6 +171,16 @@
                                             </div>
                                         </div>
                                         <div class="form-group">
+                                            <label class="control-label col-md-4" for="add-notes">Notes</label>
+                                            <div class="col-md-7">
+                                                <textarea class="form-control"
+                                                          id="add-notes"
+                                                          name="notes"
+                                                          rows="2"
+                                                          placeholder="Optional — e.g. run issue or context"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
                                             <div class="col-md-offset-4 col-md-7">
                                                 <button type="submit" class="btn btn-success">Add data point</button>
                                             </div>
@@ -184,9 +195,11 @@
                                           class="form-horizontal">
                                         {% csrf_token %}
                                         <p class="help-block">
-                                            Two columns: <code>timestamp,value</code>. Header row is optional. Supported
-                                            timestamp formats include <code>YYYY-MM-DD HH:MM</code>,
-                                            <code>YYYY-MM-DDTHH:MM:SS</code>, and <code>MM/DD/YYYY HH:MM</code>.
+                                            At least two columns: <code>timestamp,value</code>. Optional third column:
+                                            <code>notes</code>. Header row is optional. If a note contains commas, wrap that
+                                            field in double quotes in the CSV. Supported timestamp formats include
+                                            <code>YYYY-MM-DD HH:MM</code>, <code>YYYY-MM-DDTHH:MM:SS</code>, and
+                                            <code>MM/DD/YYYY HH:MM</code>.
                                         </p>
                                         <div class="form-group">
                                             <label class="control-label col-md-3" for="csv-file">CSV file</label>
@@ -201,7 +214,7 @@
                                                           id="csv-text"
                                                           name="csv_text"
                                                           rows="6"
-                                                          placeholder="2026-05-14 09:00,42.7&#10;2026-05-14 10:00,43.1"></textarea>
+                                                          placeholder="2026-05-14 09:00,42.7&#10;2026-05-14 10:00,43.1,probe replaced"></textarea>
                                             </div>
                                         </div>
                                         <div class="form-group">
@@ -375,6 +388,8 @@
             const created_by = escape_html((data.created_by || [])[i] || '');
             const created_on = escape_html((data.created_on || [])[i] || '');
             const updated_on = escape_html((data.updated_on || [])[i] || '');
+            const notes_raw = (data.notes || [])[i] || '';
+            const notes = escape_html(notes_raw);
             let actions = '';
             if (can_upload)
             {
@@ -386,6 +401,7 @@
             return '<tr data-id="' + id + '" data-value="' + value + '" data-time="' + time + '">'
                 + '<td class="cell-time">' + time + '</td>'
                 + '<td class="cell-value">' + value + '</td>'
+                + '<td class="cell-notes monitor-data-notes">' + notes + '</td>'
                 + '<td>' + created_by + '</td>'
                 + '<td>' + created_on + '</td>'
                 + '<td>' + updated_on + '</td>'
@@ -467,11 +483,14 @@
                 const newValue = prompt("New value:", currentValue);
                 if (newValue === null) return;
                 const newTime = prompt("New timestamp (blank = unchanged):", currentTime) || '';
+                const currentNotes = $row.find('.cell-notes').text();
+                const newNotes = prompt("Notes (optional, blank clears the note). Cancel aborts without saving:", currentNotes);
+                if (newNotes === null) return;
                 $.ajax(
                 {
                     url: "/monitor/{{ monitor.id }}/data/" + id + "/edit/",
                     type: 'POST',
-                    data: { value: newValue, created_date: newTime, csrfmiddlewaretoken: csrf_token },
+                    data: { value: newValue, created_date: newTime, notes: newNotes, csrfmiddlewaretoken: csrf_token },
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     success: function () { refresh_page(); },
                     error: function (xhr) { alert((xhr.responseJSON || {}).error || 'Update failed.'); }

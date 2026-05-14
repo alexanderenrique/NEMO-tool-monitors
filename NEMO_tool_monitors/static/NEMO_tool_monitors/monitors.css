@@ -20,7 +20,6 @@
     margin-bottom: 0;
 }
 
-.dashboard-monitor-group-item,
 .dashboard-tool-group-item,
 .dashboard-category-group-item
 {
@@ -36,4 +35,12 @@
 .dashboard-no-group-items
 {
     padding: 30px;
+}
+
+.monitor-data-notes
+{
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 28em;
+    font-size: 12px;
 }

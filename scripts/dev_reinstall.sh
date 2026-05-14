@@ -17,6 +17,7 @@ NEMO_PATH="/Users/adenton/Desktop/nemo-ce-alex"
 FORCE_REINSTALL=false
 SKIP_TESTS=true
 SKIP_BUILD=false
+SKIP_PIP=false
 BACKUP=true
 RESTART_SERVER=false
 
@@ -32,6 +33,7 @@ show_usage() {
     echo "  -f, --force             Force overwrite the installed plugin dir"
     echo "  -s, --run-tests         Run plugin tests after install"
     echo "  -b, --skip-build        Reuse the existing dist/ wheel"
+    echo "      --skip-pip          Do not pip-install the wheel (manage.py adds NEMO/plugins to sys.path so copy-only still imports)"
     echo "      --no-backup         Don't back up the existing plugin dir"
     echo "  -r, --restart           Restart Django dev server after install"
     echo "  -h, --help              Show this help"
@@ -43,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         -f|--force)       FORCE_REINSTALL=true; shift ;;
         -s|--run-tests)   SKIP_TESTS=false; shift ;;
         -b|--skip-build)  SKIP_BUILD=true; shift ;;
+        --skip-pip)       SKIP_PIP=true; shift ;;
         --no-backup)      BACKUP=false; shift ;;
         -r|--restart)     RESTART_SERVER=true; shift ;;
         -h|--help)        show_usage; exit 0 ;;
@@ -119,7 +122,62 @@ if [[ -z "$EXTRACTED" ]]; then
 fi
 cp -r "$EXTRACTED" "$NEMO_PLUGINS_DIR/"
 rm -rf "$TEMP_DIR"
-print_success "Installed plugin into $NEMO_PLUGINS_DIR/NEMO_tool_monitors"
+print_success "Copied package to $NEMO_PLUGINS_DIR/NEMO_tool_monitors"
+
+# NEMO's default manage.py does NOT put NEMO/plugins on sys.path (unlike the optional
+# ../nemo-mqtt-bridge/src hook). Django must import NEMO_tool_monitors as a top-level
+# package, so install the wheel into the NEMO project's venv.
+WHEEL_ABS="$DEV_DIR/$WHEEL_FILE"
+if [[ "$SKIP_PIP" == "false" ]]; then
+    print_status "pip install wheel into NEMO venv ($PYTHON_CMD) …"
+    (cd "$NEMO_PROJECT_ROOT" && "$PYTHON_CMD" -m pip install --force-reinstall "$WHEEL_ABS") \
+        || { print_error "pip install failed"; exit 1; }
+    print_success "Installed wheel into venv (import NEMO_tool_monitors works for manage.py)"
+else
+    print_warning "Skipped pip install; relying on NEMO/plugins on sys.path (see manage.py patch below)."
+fi
+
+# Ensure target NEMO's manage.py puts NEMO/plugins on sys.path. Otherwise `python manage.py`
+# only works if the same interpreter that received `pip install` is used (e.g. conda vs venv mismatch).
+MANAGE_PY="$NEMO_PROJECT_ROOT/manage.py"
+if [[ -f "$MANAGE_PY" ]] && ! grep -q "_nemo_plugins_dir" "$MANAGE_PY"; then
+    print_status "Patching $MANAGE_PY: prepend NEMO/plugins to sys.path (any Python can import drop-in plugins)"
+    cp "$MANAGE_PY" "$MANAGE_PY.bak.$(date +%Y%m%d_%H%M%S)"
+    python3 - "$MANAGE_PY" <<'PY'
+import sys
+
+path = sys.argv[1]
+block = """
+
+# Drop-in plugins under NEMO/plugins (e.g. NEMO_tool_monitors from NEMO-tool-monitors dev_reinstall.sh)
+_nemo_plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NEMO", "plugins")
+if os.path.isdir(_nemo_plugins_dir) and _nemo_plugins_dir not in sys.path:
+    sys.path.insert(0, _nemo_plugins_dir)
+"""
+with open(path, "r") as f:
+    text = f.read()
+if "_nemo_plugins_dir" in text:
+    print("manage.py already contains NEMO/plugins path hook.")
+    sys.exit(0)
+needle = (
+    "if os.path.exists(_nemo_mqtt_src):\n"
+    "    sys.path.insert(0, os.path.abspath(_nemo_mqtt_src))\n"
+)
+if needle in text:
+    text = text.replace(needle, needle + block)
+else:
+    # No mqtt dev hook: insert after `import sys`
+    insert_after = "import sys\n"
+    if insert_after not in text:
+        print("Could not find insertion point in manage.py; edit manually.", file=sys.stderr)
+        sys.exit(1)
+    text = text.replace(insert_after, insert_after + block, 1)
+with open(path, "w") as f:
+    f.write(text)
+print("Patched manage.py.")
+PY
+    print_success "manage.py now adds NEMO/plugins to sys.path"
+fi
 
 # Make sure NEMO_tool_monitors is in INSTALLED_APPS (best-effort, idempotent).
 SETTINGS_FILE="$NEMO_PROJECT_ROOT/resources/settings.py"

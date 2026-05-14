@@ -9,19 +9,100 @@
     <div class="well well-monitors-dashboard">
         <ol class="breadcrumb breadcrumb-monitors-dashboard">
             <li>
-                <a href="{% url 'monitors_dashboard' %}">Dashboard</a>
+                <a href="{% url 'tool_monitors' %}">Dashboard</a>
             </li>
             <li class="active">{{ tool.name }}</li>
         </ol>
         <div class="panel-body">
             <div class="form-inline" style="margin-bottom: 15px;">
                 <h3 style="display:inline-block;margin-right:15px;">Monitors for {{ tool.name }}</h3>
-                {% if can_upload %}
-                    <a class="btn btn-success" href="{% url 'create_monitor' tool.id %}">
-                        <i class="glyphicon glyphicon-plus"></i> New monitor
-                    </a>
-                {% endif %}
             </div>
+            {% if can_upload and monitors %}
+                <div class="panel panel-default" style="margin-bottom: 20px;">
+                    <div class="panel-heading"><strong>Add a data point</strong></div>
+                    <div class="panel-body">
+                        <form method="post"
+                              id="tool-monitors-quick-add"
+                              class="form-horizontal"
+                              style="max-width: 720px;">
+                            {% csrf_token %}
+                            <input type="hidden" name="return_to_tool" value="{{ tool.id }}" />
+                            <div class="form-group">
+                                <label class="control-label col-sm-3" for="qa-monitor">Monitor</label>
+                                <div class="col-sm-9">
+                                    <select class="form-control" id="qa-monitor" required>
+                                        <option value="">— Select monitor —</option>
+                                        {% for monitor in monitors %}
+                                            <option value="{{ monitor.id }}">{{ monitor.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label col-sm-3" for="qa-value">Value</label>
+                                <div class="col-sm-9">
+                                    <input class="form-control"
+                                           type="number"
+                                           step="any"
+                                           id="qa-value"
+                                           name="value"
+                                           required />
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label col-sm-3" for="qa-date">Timestamp</label>
+                                <div class="col-sm-9">
+                                    <input class="form-control"
+                                           type="text"
+                                           id="qa-date"
+                                           name="created_date"
+                                           placeholder="leave blank for now" />
+                                    <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label col-sm-3" for="qa-notes">Notes</label>
+                                <div class="col-sm-9">
+                                    <textarea class="form-control"
+                                              id="qa-notes"
+                                              name="notes"
+                                              rows="2"
+                                              placeholder="Optional"></textarea>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div class="col-sm-offset-3 col-sm-9">
+                                    <button type="submit" class="btn btn-success">Add data point</button>
+                                    <span class="help-block" style="margin-top:8px;">
+                                        Bulk CSV upload and editing points: open the monitor and use the <strong>Upload</strong> or <strong>Data</strong> tab.
+                                    </span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <script type="text/javascript">
+                    (function ()
+                    {
+                        const tpl = "{{ add_data_action_template|escapejs }}";
+                        const form = document.getElementById("tool-monitors-quick-add");
+                        if (!form)
+                        {
+                            return;
+                        }
+                        form.addEventListener("submit", function (e)
+                        {
+                            const mid = document.getElementById("qa-monitor").value;
+                            if (!mid)
+                            {
+                                e.preventDefault();
+                                return;
+                            }
+                            form.action = tpl.replace("/0/", "/" + mid + "/");
+                        });
+                    })();
+                </script>
+            {% endif %}
             {% if monitors %}
                 <table class="table table-bordered table-hover table-striped">
                     <thead>
@@ -45,16 +126,6 @@
                                 <td>{{ monitor.last_value_display|default:"-" }}</td>
                                 <td class="text-right">
                                     <a class="btn btn-default btn-xs" href="{% url 'monitor_details' monitor.id %}">View</a>
-                                    {% if can_upload %}
-                                        <a class="btn btn-default btn-xs" href="{% url 'edit_monitor' monitor.id %}">Edit</a>
-                                        <form style="display:inline;"
-                                              method="post"
-                                              action="{% url 'delete_monitor' monitor.id %}"
-                                              onsubmit="return confirm('Delete monitor {{ monitor.name }} and all of its data?');">
-                                            {% csrf_token %}
-                                            <button class="btn btn-danger btn-xs" type="submit">Delete</button>
-                                        </form>
-                                    {% endif %}
                                 </td>
                             </tr>
                         {% endfor %}
@@ -62,11 +133,12 @@
                 </table>
             {% else %}
                 <div class="dashboard-no-group-items">
-                    No monitors yet for this tool.
-                    {% if can_upload %}
+                    No monitors yet for this tool. Monitors are created by site staff in
+                    <strong>Django administration</strong> (Tool monitors).
+                    {% if user.is_superuser and "django.contrib.admin"|app_installed %}
                         <br>
                         <br>
-                        <a class="btn btn-success" href="{% url 'create_monitor' tool.id %}">Create the first monitor</a>
+                        <a class="btn btn-default" href="{% url 'admin:tool_monitors_monitor_add' %}?tool={{ tool.id }}">Add monitor in admin</a>
                     {% endif %}
                 </div>
             {% endif %}

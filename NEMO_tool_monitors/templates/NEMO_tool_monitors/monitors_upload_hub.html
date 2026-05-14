@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block extrahead %}
+    <link rel="stylesheet" type="text/css" href="{% static 'NEMO_tool_monitors/monitors.css' %}" />
+{% endblock %}
+{% block title %}Upload monitor data{% endblock %}
+{% block content %}
+    <div class="well well-monitors-dashboard">
+        <ol class="breadcrumb breadcrumb-monitors-dashboard">
+            <li>
+                <a href="{% url 'tool_monitors' %}">Dashboard</a>
+            </li>
+            <li class="active">Upload data</li>
+        </ol>
+        <div class="panel-body">
+            <p class="text-muted">Choose a tool and monitor, then open the upload tab or view the chart or data table.</p>
+            {% if tools_payload %}
+                <div class="form-horizontal" style="max-width: 640px">
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label" for="upload-hub-tool">Tool</label>
+                        <div class="col-sm-9">
+                            <select id="upload-hub-tool" class="form-control">
+                                <option value="">— Select tool —</option>
+                                {% for t in tools_payload %}
+                                    <option value="{{ t.id }}">{{ t.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label" for="upload-hub-monitor">Monitor</label>
+                        <div class="col-sm-9">
+                            <select id="upload-hub-monitor" class="form-control" disabled>
+                                <option value="">— Select monitor —</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="col-sm-offset-3 col-sm-9">
+                            <a id="upload-hub-go-upload" class="btn btn-primary" href="#" aria-disabled="true">Upload data</a>
+                            <a id="upload-hub-go-chart" class="btn btn-default" href="#" aria-disabled="true">View chart</a>
+                            <a id="upload-hub-go-data" class="btn btn-default" href="#" aria-disabled="true">View data table</a>
+                        </div>
+                    </div>
+                </div>
+                {{ tools_payload|json_script:"upload-hub-tools-json" }}
+                <script type="text/javascript">
+                    (function ()
+                    {
+                        const payload = JSON.parse(document.getElementById("upload-hub-tools-json").textContent);
+                        const byToolId = {};
+                        for (const t of payload)
+                        {
+                            byToolId[String(t.id)] = t.monitors || [];
+                        }
+                        const toolSelect = document.getElementById("upload-hub-tool");
+                        const monitorSelect = document.getElementById("upload-hub-monitor");
+                        const goUpload = document.getElementById("upload-hub-go-upload");
+                        const goChart = document.getElementById("upload-hub-go-chart");
+                        const goData = document.getElementById("upload-hub-go-data");
+
+                        function clearMonitorOptions()
+                        {
+                            monitorSelect.innerHTML = "";
+                            const opt = document.createElement("option");
+                            opt.value = "";
+                            opt.textContent = "— Select monitor —";
+                            monitorSelect.appendChild(opt);
+                        }
+
+                        function setActionLinks(monitor)
+                        {
+                            if (!monitor)
+                            {
+                                goUpload.href = "#";
+                                goChart.href = "#";
+                                goData.href = "#";
+                                goUpload.setAttribute("aria-disabled", "true");
+                                goChart.setAttribute("aria-disabled", "true");
+                                goData.setAttribute("aria-disabled", "true");
+                                goUpload.classList.add("disabled");
+                                goChart.classList.add("disabled");
+                                goData.classList.add("disabled");
+                                return;
+                            }
+                            goUpload.href = monitor.upload_url;
+                            goChart.href = monitor.chart_url;
+                            goData.href = monitor.data_url;
+                            goUpload.removeAttribute("aria-disabled");
+                            goChart.removeAttribute("aria-disabled");
+                            goData.removeAttribute("aria-disabled");
+                            goUpload.classList.remove("disabled");
+                            goChart.classList.remove("disabled");
+                            goData.classList.remove("disabled");
+                        }
+
+                        function onToolChange()
+                        {
+                            const tid = toolSelect.value;
+                            clearMonitorOptions();
+                            monitorSelect.disabled = !tid;
+                            setActionLinks(null);
+                            if (!tid)
+                            {
+                                return;
+                            }
+                            const monitors = byToolId[tid] || [];
+                            for (const m of monitors)
+                            {
+                                const opt = document.createElement("option");
+                                opt.value = String(m.id);
+                                opt.textContent = m.name;
+                                opt.dataset.uploadUrl = m.upload_url;
+                                opt.dataset.chartUrl = m.chart_url;
+                                opt.dataset.dataUrl = m.data_url;
+                                monitorSelect.appendChild(opt);
+                            }
+                        }
+
+                        function onMonitorChange()
+                        {
+                            const opt = monitorSelect.selectedOptions[0];
+                            if (!opt || !opt.value)
+                            {
+                                setActionLinks(null);
+                                return;
+                            }
+                            setActionLinks({
+                                upload_url: opt.dataset.uploadUrl,
+                                chart_url: opt.dataset.chartUrl,
+                                data_url: opt.dataset.dataUrl,
+                            });
+                        }
+
+                        toolSelect.addEventListener("change", onToolChange);
+                        monitorSelect.addEventListener("change", onMonitorChange);
+                    })();
+                </script>
+            {% else %}
+                <p><i>No tools with visible monitors are available. Add monitors in administration or make them visible.</i></p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
