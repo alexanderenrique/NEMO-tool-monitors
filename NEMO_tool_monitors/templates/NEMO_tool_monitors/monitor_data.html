@@ -15,19 +15,19 @@
             <li>
                 <a href="{% url 'tool_monitors' %}">Dashboard</a>
             </li>
-            <li>
-                <a href="{% url 'tool_monitors_for_tool' monitor.tool.id %}">{{ monitor.tool.name }}</a>
-            </li>
-            {% if monitor.monitor_category %}
-                {% for ancestor in monitor.monitor_category.ancestors %}
+            {% if tool_category %}
+                {% for ancestor in tool_category.ancestors %}
                     <li>
-                        <a href="{% url 'tool_monitors' ancestor.id %}">{{ ancestor.name }}</a>
+                        <a href="{% url 'tool_monitors_category' ancestor.path %}">{{ ancestor.name }}</a>
                     </li>
                 {% endfor %}
                 <li>
-                    <a href="{% url 'tool_monitors' monitor.monitor_category.id %}">{{ monitor.monitor_category.name }}</a>
+                    <a href="{% url 'tool_monitors_category' tool_category.path %}">{{ tool_category.name }}</a>
                 </li>
             {% endif %}
+            <li>
+                <a href="{% url 'tool_monitors_for_tool' monitor.tool.id %}">{{ monitor.tool.name }}</a>
+            </li>
             <li class="active">{{ monitor.name }}</li>
         </ol>
         <div class="panel-body">
@@ -57,16 +57,6 @@
                             </button>
                         </span>
                     </div>
-                    <div class="visible-sm visible-xs" style="margin-bottom: 15px;"></div>
-                    <label class="control-label" for="refresh-rate">Refresh rate:</label>
-                    <select class="form-control" id="refresh-rate" onchange="update_refresh_rate();refresh_page();">
-                        <option value="" {% if not refresh_rate %}selected{% endif %}>no refresh</option>
-                        <option value="1000" {% if refresh_rate == 1000 %}selected{% endif %}>every second</option>
-                        <option value="5000" {% if refresh_rate == 5000 %}selected{% endif %}>every 5 seconds</option>
-                        <option value="30000" {% if refresh_rate == 30000 %}selected{% endif %}>every 30 seconds</option>
-                        <option value="60000" {% if refresh_rate == 60000 %}selected{% endif %}>every minute</option>
-                        <option value="300000" {% if refresh_rate == 300000 %}selected{% endif %}>every 5 minutes</option>
-                    </select>
                 </div>
             </div>
             <ul class="nav nav-tabs" id="tabs">
@@ -106,6 +96,7 @@
                                 <label class="control-label">data point</label>
                             </div>
                         </div>
+                        <div id="column-toggles" style="display:none; margin: 8px 0;"></div>
                         <div>
                             <canvas id="monitor-chart"></canvas>
                         </div>
@@ -121,7 +112,7 @@
                         </div>
                         <div>
                             <table id="monitor-table" class="table table-bordered table-hover table-striped" style="margin-top: 20px;">
-                                <thead>
+                                <thead id="monitor-table-head">
                                     <tr class="info" style="pointer-events: none;">
                                         <th>Time</th>
                                         <th>{{ monitor.data_label|default_if_none:'Value' }}</th>
@@ -148,17 +139,48 @@
                                     <h4>Add a single data point</h4>
                                     <form method="POST" action="{% url 'add_monitor_data' monitor.id %}" class="form-horizontal">
                                         {% csrf_token %}
-                                        <div class="form-group">
-                                            <label class="control-label col-md-4" for="add-value">Value</label>
-                                            <div class="col-md-7">
-                                                <input class="form-control"
-                                                       type="number"
-                                                       step="any"
-                                                       id="add-value"
-                                                       name="value"
-                                                       required />
+                                        {% if monitor.columns.exists %}
+                                            {% for col in monitor.columns.all %}
+                                                <div class="form-group">
+                                                    <label class="control-label col-md-4" for="add-col-{{ col.id }}">{{ col.name }}</label>
+                                                    <div class="col-md-7">
+                                                        {% if col.data_type == "string" %}
+                                                            <input class="form-control"
+                                                                   type="text"
+                                                                   id="add-col-{{ col.id }}"
+                                                                   name="col_value_{{ col.id }}" />
+                                                        {% elif col.data_type == "integer" %}
+                                                            <input class="form-control"
+                                                                   type="number"
+                                                                   step="1"
+                                                                   id="add-col-{{ col.id }}"
+                                                                   name="col_value_{{ col.id }}" />
+                                                        {% else %}
+                                                            <input class="form-control"
+                                                                   type="number"
+                                                                   step="any"
+                                                                   id="add-col-{{ col.id }}"
+                                                                   name="col_value_{{ col.id }}" />
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                            <p class="help-block col-md-offset-4 col-md-7" style="margin-bottom:8px;">
+                                                Leave a field blank to omit it from this entry.
+                                            </p>
+                                        {% else %}
+                                            <div class="form-group">
+                                                <label class="control-label col-md-4" for="add-value">Value</label>
+                                                <div class="col-md-7">
+                                                    <input class="form-control"
+                                                           type="number"
+                                                           step="any"
+                                                           id="add-value"
+                                                           name="value"
+                                                           required />
+                                                </div>
                                             </div>
-                                        </div>
+                                        {% endif %}
                                         <div class="form-group">
                                             <label class="control-label col-md-4" for="add-date">Timestamp</label>
                                             <div class="col-md-7">
@@ -170,6 +192,7 @@
                                                 <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
                                             </div>
                                         </div>
+                                        {% if use_legacy_notes %}
                                         <div class="form-group">
                                             <label class="control-label col-md-4" for="add-notes">Notes</label>
                                             <div class="col-md-7">
@@ -180,6 +203,7 @@
                                                           placeholder="Optional — e.g. run issue or context"></textarea>
                                             </div>
                                         </div>
+                                        {% endif %}
                                         <div class="form-group">
                                             <div class="col-md-offset-4 col-md-7">
                                                 <button type="submit" class="btn btn-success">Add data point</button>
@@ -194,13 +218,22 @@
                                           enctype="multipart/form-data"
                                           class="form-horizontal">
                                         {% csrf_token %}
-                                        <p class="help-block">
-                                            At least two columns: <code>timestamp,value</code>. Optional third column:
-                                            <code>notes</code>. Header row is optional. If a note contains commas, wrap that
-                                            field in double quotes in the CSV. Supported timestamp formats include
-                                            <code>YYYY-MM-DD HH:MM</code>, <code>YYYY-MM-DDTHH:MM:SS</code>, and
-                                            <code>MM/DD/YYYY HH:MM</code>.
-                                        </p>
+                                        {% if monitor.columns.exists %}
+                                            <p class="help-block">
+                                                This monitor has defined data entry fields. The first row must be a header matching
+                                                the field names below. The first column must be the date/timestamp.
+                                                Blank cells are skipped. Defined fields:
+                                                <strong>{% for col in monitor.columns.all %}{{ col.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</strong>.
+                                            </p>
+                                        {% else %}
+                                            <p class="help-block">
+                                                At least two columns: <code>timestamp,value</code>. Optional third column:
+                                                <code>notes</code>. Header row is optional. If a note contains commas, wrap that
+                                                field in double quotes in the CSV. Supported timestamp formats include
+                                                <code>YYYY-MM-DD HH:MM</code>, <code>YYYY-MM-DDTHH:MM:SS</code>, and
+                                                <code>MM/DD/YYYY HH:MM</code>.
+                                            </p>
+                                        {% endif %}
                                         <div class="form-group">
                                             <label class="control-label col-md-3" for="csv-file">CSV file</label>
                                             <div class="col-md-8">
@@ -288,11 +321,10 @@
 
         function get_base_url(url)
         {
-            const refreshRate = $('#refresh-rate').val() || 0;
             const chartStep = $("#chart-step").val() || 1;
             const dates = get_start_end_dates();
             const base_url = url ? url : $("#data-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'data' %}" : $("#chart-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'chart' %}" : $("#alert-tab").hasClass("active") ? "{% url 'monitor_details' monitor.id 'alert' %}" : "{% url 'monitor_details' monitor.id 'upload' %}";
-            return base_url + "?start=" + dates[0] + "&end=" + dates[1] + "&chart_step=" + chartStep + "&refresh_rate=" + refreshRate;
+            return base_url + "?start=" + dates[0] + "&end=" + dates[1] + "&chart_step=" + chartStep;
         }
 
         function filter_every_x_point(data)
@@ -301,10 +333,105 @@
             return data.filter((element, index) => {return index % chartStep === 0;});
         }
 
+        // 10-color palette for multi-column series
+        const SERIES_COLORS = [
+            'rgb(75, 192, 192)',
+            'rgb(255, 99, 132)',
+            'rgb(54, 162, 235)',
+            'rgb(255, 159, 64)',
+            'rgb(153, 102, 255)',
+            'rgb(255, 205, 86)',
+            'rgb(201, 203, 207)',
+            'rgb(0, 128, 0)',
+            'rgb(220, 20, 60)',
+            'rgb(0, 0, 205)',
+        ];
+
         const monitorChart = $("#monitor-chart");
         let monitorChartObject = null;
+
+        function build_datasets(data)
+        {
+            // data.columns: [{name, type}, ...]
+            // data.series: {colName: {labels, data, ...}, ...}
+            const columns = data.columns || [{name: '', type: 'float'}];
+            const series = data.series || {'': data};
+            const isLegacy = columns.length === 1 && columns[0].name === '';
+            let datasets = [];
+            let colorIdx = 0;
+            for (let i = 0; i < columns.length; i++) {
+                const col = columns[i];
+                if (col.type === 'string') continue;  // not plottable
+                const bucket = series[col.name] || {};
+                const label = isLegacy ? '{{ monitor.name|escapejs }}' : col.name;
+                const color = SERIES_COLORS[colorIdx % SERIES_COLORS.length];
+                colorIdx++;
+                datasets.push({
+                    label: label,
+                    borderColor: color,
+                    backgroundColor: color,
+                    data: filter_every_x_point(bucket.data || []),
+                    _labels: filter_every_x_point(bucket.labels || []),
+                    _col_name: col.name,
+                    hidden: colorIdx > 1,  // only the first plottable column is visible on load
+                });
+            }
+            return datasets;
+        }
+
+        function update_column_toggles(datasets)
+        {
+            const $toggles = $('#column-toggles');
+            if (datasets.length <= 1) {
+                $toggles.hide().empty();
+                return;
+            }
+            $toggles.empty();
+            datasets.forEach(function(ds, idx) {
+                const id = 'toggle-col-' + idx;
+                const dot = '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + ds.borderColor + ';margin-right:4px;vertical-align:middle;"></span>';
+                const cb = $('<input type="checkbox" style="margin-right:4px;vertical-align:middle;" />')
+                    .prop('checked', !ds.hidden)
+                    .attr('id', id)
+                    .on('change', function() {
+                        if (monitorChartObject) {
+                            monitorChartObject.data.datasets[idx].hidden = !this.checked;
+                            monitorChartObject.update();
+                        }
+                    });
+                const label = $('<label style="margin-right:12px;font-weight:normal;cursor:pointer;"></label>')
+                    .attr('for', id)
+                    .append(cb)
+                    .append(dot)
+                    .append(document.createTextNode(ds.label));
+                $toggles.append(label);
+            });
+            $toggles.show();
+        }
+
         function update_chart(data)
         {
+            const columns = data.columns || [{name: '', type: 'float'}];
+            const series = data.series || {'': data};
+            const isLegacy = columns.length === 1 && columns[0].name === '';
+
+            // Compute shared time labels (union of all plottable columns' labels, or first column's)
+            let allLabels = [];
+            if (isLegacy) {
+                allLabels = filter_every_x_point((series[''] || data).labels || []);
+            } else {
+                // Use the first plottable column's labels as the x-axis (they all share the same dates)
+                for (let i = 0; i < columns.length; i++) {
+                    if (columns[i].type !== 'string') {
+                        allLabels = filter_every_x_point((series[columns[i].name] || {}).labels || []);
+                        break;
+                    }
+                }
+            }
+
+            const datasets = build_datasets(data);
+            update_column_toggles(datasets);
+
             let ctx = monitorChart[0].getContext("2d");
             if (monitorChartObject) monitorChartObject.destroy();
             monitorChartObject = new Chart(ctx,
@@ -312,14 +439,8 @@
                 type: 'line',
                 data:
                 {
-                    labels: filter_every_x_point(data.labels),
-                    datasets: [
-                    {
-                        label: '{{ monitor.name|escapejs }}',
-                        borderColor: 'rgb(75, 192, 192)',
-                        backgroundColor: 'rgb(75, 192, 192)',
-                        data: filter_every_x_point(data.data)
-                    }]
+                    labels: allLabels,
+                    datasets: datasets,
                 },
                 options:
                 {
@@ -380,16 +501,22 @@
             return $('<div>').text(str === null || str === undefined ? '' : str).html();
         }
 
-        function render_row(data, i)
+        // Stores colData arrays keyed by row index for multi-column edit/delete
+        let _multiColRowData = {};
+
+        const LEGACY_VALUE_LABEL = '{{ monitor.data_label|default_if_none:"Value"|escapejs }}';
+
+        function render_row_legacy(bucket, i)
         {
-            const id = data.ids ? data.ids[i] : '';
-            const time = escape_html(data.labels[i]);
-            const value = escape_html(data.data[i]);
-            const created_by = escape_html((data.created_by || [])[i] || '');
-            const created_on = escape_html((data.created_on || [])[i] || '');
-            const updated_on = escape_html((data.updated_on || [])[i] || '');
-            const notes_raw = (data.notes || [])[i] || '';
-            const notes = escape_html(notes_raw);
+            const id = (bucket.ids || [])[i] || '';
+            const time = escape_html((bucket.labels || [])[i] || '');
+            const raw_val = (bucket.data || [])[i];
+            const string_val = (bucket.string_data || [])[i] || '';
+            const display_val = escape_html(raw_val !== null && raw_val !== undefined ? raw_val : string_val);
+            const created_by = escape_html((bucket.created_by || [])[i] || '');
+            const created_on = escape_html((bucket.created_on || [])[i] || '');
+            const updated_on = escape_html((bucket.updated_on || [])[i] || '');
+            const notes = escape_html((bucket.notes || [])[i] || '');
             let actions = '';
             if (can_upload)
             {
@@ -398,9 +525,9 @@
                     + '<button class="btn btn-danger btn-xs js-delete" type="button">Delete</button>'
                     + '</td>';
             }
-            return '<tr data-id="' + id + '" data-value="' + value + '" data-time="' + time + '">'
+            return '<tr data-id="' + id + '" data-value="' + escape_html(raw_val !== null && raw_val !== undefined ? String(raw_val) : '') + '" data-time="' + time + '">'
                 + '<td class="cell-time">' + time + '</td>'
-                + '<td class="cell-value">' + value + '</td>'
+                + '<td class="cell-value">' + display_val + '</td>'
                 + '<td class="cell-notes monitor-data-notes">' + notes + '</td>'
                 + '<td>' + created_by + '</td>'
                 + '<td>' + created_on + '</td>'
@@ -411,12 +538,167 @@
 
         function update_table(data)
         {
-            let rows = '';
-            for (let i = data.labels.length - 1; i >= 0; i--)
+            window._lastChartData = data;
+            const columns = data.columns || [{name: '', type: 'float'}];
+            const series = data.series || {'': data};
+            const isLegacy = columns.length === 1 && columns[0].name === '';
+            const hasNotesField = columns.some(function(c) { return (c.name || '').toLowerCase() === 'notes'; });
+            _multiColRowData = {};
+
+            if (!isLegacy)
             {
-                rows += render_row(data, i);
+                // Multi-column pivoted mode: one table row per timestamp
+                // Pivot: timestamp -> { colName -> data-point }
+                const groups = {};
+                const timeOrder = [];
+                for (let c = 0; c < columns.length; c++)
+                {
+                    const col = columns[c];
+                    const bucket = series[col.name] || {};
+                    const labels = bucket.labels || [];
+                    for (let i = 0; i < labels.length; i++)
+                    {
+                        const ts = labels[i];
+                        if (!groups[ts])
+                        {
+                            groups[ts] = {};
+                            timeOrder.push(ts);
+                        }
+                        groups[ts][col.name] = {
+                            id: (bucket.ids || [])[i],
+                            value: (bucket.data || [])[i],
+                            string_value: (bucket.string_data || [])[i] || '',
+                            notes: (bucket.notes || [])[i] || '',
+                            created_by: (bucket.created_by || [])[i] || '',
+                            created_on: (bucket.created_on || [])[i] || '',
+                            updated_on: (bucket.updated_on || [])[i] || '',
+                        };
+                    }
+                }
+                timeOrder.sort(function(a, b) { return b.localeCompare(a); });
+
+                // Rebuild header with one <th> per column
+                let headerHtml = '<tr class="info" style="pointer-events: none;"><th>Time</th>';
+                for (let c = 0; c < columns.length; c++)
+                {
+                    headerHtml += '<th>' + escape_html(columns[c].name) + '</th>';
+                }
+                if (!hasNotesField) headerHtml += '<th>Notes</th>';
+                headerHtml += '<th>Uploaded by</th><th>Uploaded on</th><th>Last edited</th>';
+                if (can_upload) headerHtml += '<th></th>';
+                headerHtml += '</tr>';
+                $('#monitor-table-head').html(headerHtml);
+
+                // Build pivoted rows
+                let rows = '';
+                for (let ti = 0; ti < timeOrder.length; ti++)
+                {
+                    const ts = timeOrder[ti];
+                    const group = groups[ts];
+                    const allIds = [];
+                    const colData = [];
+                    let shared_notes = '', created_by = '', created_on = '', updated_on = '';
+
+                    for (let c = 0; c < columns.length; c++)
+                    {
+                        const col = columns[c];
+                        const dp = group[col.name];
+                        if (dp)
+                        {
+                            allIds.push(dp.id);
+                            colData.push({ id: dp.id, name: col.name, type: col.type, value: dp.value, string_value: dp.string_value, notes: dp.notes });
+                            if (!shared_notes && dp.notes) shared_notes = dp.notes;
+                            if (!created_by) created_by = dp.created_by;
+                            if (!created_on) created_on = dp.created_on;
+                            if (!updated_on) updated_on = dp.updated_on;
+                        }
+                        else
+                        {
+                            colData.push(null);
+                        }
+                    }
+                    _multiColRowData[ti] = colData;
+
+                    let valueCells = '';
+                    for (let c = 0; c < columns.length; c++)
+                    {
+                        const dp = colData[c];
+                        if (dp !== null)
+                        {
+                            const raw = dp.value !== null && dp.value !== undefined ? dp.value : dp.string_value;
+                            valueCells += '<td>' + escape_html(raw !== null && raw !== undefined ? String(raw) : '') + '</td>';
+                        }
+                        else
+                        {
+                            valueCells += '<td class="text-muted">—</td>';
+                        }
+                    }
+
+                    let actions = '';
+                    if (can_upload)
+                    {
+                        actions = '<td class="text-right" style="white-space:nowrap;">'
+                            + '<button class="btn btn-default btn-xs js-edit-multi" type="button">Edit</button> '
+                            + '<button class="btn btn-danger btn-xs js-delete-multi" type="button">Delete</button>'
+                            + '</td>';
+                    }
+
+                    rows += '<tr data-row-idx="' + ti + '"'
+                        + ' data-ids="' + escape_html(allIds.join(',')) + '"'
+                        + ' data-time="' + escape_html(ts) + '"'
+                        + ' data-notes="' + escape_html(shared_notes) + '">'
+                        + '<td class="cell-time">' + escape_html(ts) + '</td>'
+                        + valueCells;
+                    if (!hasNotesField)
+                    {
+                        rows += '<td class="cell-notes monitor-data-notes">' + escape_html(shared_notes) + '</td>';
+                    }
+                    rows += '<td>' + escape_html(created_by) + '</td>'
+                        + '<td>' + escape_html(created_on) + '</td>'
+                        + '<td>' + escape_html(updated_on) + '</td>'
+                        + actions
+                        + '</tr>';
+                }
+                $('#monitor-table-body').html(rows);
             }
-            $("#monitor-table-body").html(rows);
+            else
+            {
+                // Legacy single-value mode — restore simple header
+                let headerHtml = '<tr class="info" style="pointer-events: none;">'
+                    + '<th>Time</th>'
+                    + '<th>' + escape_html(LEGACY_VALUE_LABEL) + '</th>'
+                    + '<th>Notes</th><th>Uploaded by</th><th>Uploaded on</th><th>Last edited</th>';
+                if (can_upload) headerHtml += '<th></th>';
+                headerHtml += '</tr>';
+                $('#monitor-table-head').html(headerHtml);
+
+                const bucket = series[''] || {};
+                let flatRows = [];
+                const labels = bucket.labels || [];
+                for (let i = 0; i < labels.length; i++)
+                {
+                    flatRows.push({ time: labels[i], idx: i });
+                }
+                flatRows.sort(function(a, b) { return b.time.localeCompare(a.time); });
+
+                let rows = '';
+                for (let r = 0; r < flatRows.length; r++)
+                {
+                    rows += render_row_legacy(bucket, flatRows[r].idx);
+                }
+                $('#monitor-table-body').html(rows);
+            }
+        }
+
+        function has_any_data(data)
+        {
+            if (!data) return false;
+            // New shape
+            if (data.series) {
+                return (data.total || 0) > 0;
+            }
+            // Legacy flat shape fallback
+            return data.data && data.data.length > 0;
         }
 
         function refresh_page()
@@ -442,7 +724,7 @@
                     url: data_url,
                     success: function (data)
                     {
-                        if (data && data.data && data.data.length)
+                        if (has_any_data(data))
                         {
                             $('#monitor-data').show();
                             $('#no-monitor-data').hide();
@@ -467,13 +749,9 @@
             daterange_picker.data('daterangepicker').show();
         }
 
-        function update_refresh_rate()
-        {
-            set_interval_when_visible(document, refresh_page, $('#refresh-rate').val());
-        }
-
         if (can_upload)
         {
+            // Legacy single-value handlers
             $('#monitor-table-body').on('click', '.js-edit', function ()
             {
                 const $row = $(this).closest('tr');
@@ -512,9 +790,101 @@
                     error: function (xhr) { alert((xhr.responseJSON || {}).error || 'Delete failed.'); }
                 });
             });
+
+            // Multi-column pivoted handlers
+            $('#monitor-table-body').on('click', '.js-edit-multi', function ()
+            {
+                const $row = $(this).closest('tr');
+                const rowIdx = parseInt($row.data('row-idx'));
+                const colData = _multiColRowData[rowIdx] || [];
+                const currentTime = $row.data('time') || '';
+                const columns = (window._lastChartData && window._lastChartData.columns) || [];
+                const hasNotesField = columns.some(function(c) { return (c.name || '').toLowerCase() === 'notes'; });
+                const currentNotes = hasNotesField ? '' : $row.find('.cell-notes').text().trim();
+
+                const newTime = prompt("New timestamp (blank = unchanged):", currentTime);
+                if (newTime === null) return;
+                let newNotes = null;
+                if (!hasNotesField)
+                {
+                    newNotes = prompt("Notes (optional, blank clears):", currentNotes);
+                    if (newNotes === null) return;
+                }
+
+                const updates = [];
+                for (let c = 0; c < colData.length; c++)
+                {
+                    const dp = colData[c];
+                    if (!dp) continue;
+                    const currentVal = dp.value !== null && dp.value !== undefined ? String(dp.value) : dp.string_value;
+                    const newVal = prompt("Value for '" + dp.name + "':", currentVal);
+                    if (newVal === null) return;
+                    updates.push({ id: dp.id, value: newVal });
+                }
+
+                if (!updates.length) return;
+                let pending = updates.length;
+                let anyError = false;
+                updates.forEach(function (upd)
+                {
+                    const postData = { value: upd.value, csrfmiddlewaretoken: csrf_token };
+                    if (newNotes !== null) postData.notes = newNotes;
+                    if (newTime.trim()) postData.created_date = newTime.trim();
+                    $.ajax(
+                    {
+                        url: "/monitor/{{ monitor.id }}/data/" + upd.id + "/edit/",
+                        type: 'POST',
+                        data: postData,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        success: function ()
+                        {
+                            pending--;
+                            if (pending === 0 && !anyError) refresh_page();
+                        },
+                        error: function (xhr)
+                        {
+                            if (!anyError) { anyError = true; alert((xhr.responseJSON || {}).error || 'Update failed.'); }
+                            pending--;
+                            if (pending === 0) refresh_page();
+                        }
+                    });
+                });
+            });
+
+            $('#monitor-table-body').on('click', '.js-delete-multi', function ()
+            {
+                const $row = $(this).closest('tr');
+                const ids = String($row.data('ids') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                const ts = $row.data('time') || '';
+                if (!ids.length) return;
+                if (!confirm('Delete ' + ids.length + ' data point(s) at ' + ts + '?')) return;
+
+                let pending = ids.length;
+                let anyError = false;
+                ids.forEach(function (id)
+                {
+                    $.ajax(
+                    {
+                        url: "/monitor/{{ monitor.id }}/data/" + id + "/delete/",
+                        type: 'POST',
+                        data: { csrfmiddlewaretoken: csrf_token },
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        success: function ()
+                        {
+                            pending--;
+                            if (pending === 0 && !anyError) refresh_page();
+                        },
+                        error: function (xhr)
+                        {
+                            if (!anyError) { anyError = true; alert((xhr.responseJSON || {}).error || 'Delete failed.'); }
+                            pending--;
+                            if (pending === 0) refresh_page();
+                        }
+                    });
+                });
+            });
         }
 
         set_dates(moment('{{ start|input_date_format }}', '{{ datetime_input_js_format }}'), {% if end %}moment('{{ end|input_date_format }}', '{{ datetime_input_js_format }}'){% else %}now_moment_date{% endif %});
-        update_refresh_rate();
     </script>
 {% endblock %}

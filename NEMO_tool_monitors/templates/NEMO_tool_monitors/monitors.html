@@ -16,7 +16,7 @@
                 </li>
                 {% for ancestor in selected_category.ancestors %}
                     <li>
-                        <a href="{% url 'tool_monitors' ancestor.id %}">{{ ancestor.name }}</a>
+                        <a href="{% url 'tool_monitors_category' ancestor.path %}">{{ ancestor.name }}</a>
                     </li>
                 {% endfor %}
                 <li class="active">{{ selected_category.name }}</li>
@@ -26,7 +26,7 @@
             {% if categories %}
                 {% for category in categories %}
                     <li class="dashboard-category-group-item text-center {% if category.alert_triggered %}alert-danger{% else %}alert-success{% endif %}"
-                        onclick="window.location='{% url 'tool_monitors' category.id %}'">{{ category.name }}</li>
+                        onclick="window.location='{% url 'tool_monitors_category' category.path %}'">{{ category.name }}</li>
                 {% endfor %}
             {% endif %}
             {% if tools_with_monitors %}
@@ -45,7 +45,7 @@
                     {% if user.is_superuser and not selected_category and "django.contrib.admin"|app_installed %}
                         <br />
                         <br />
-                        You can add monitors and categories by navigating to
+                        You can add monitors by navigating to
                         <br>
                         <a href="{% url 'admin:app_list' 'tool_monitors' %}">Administration -> Detailed Administration -> Tool monitors</a>
                     {% endif %}
@@ -73,7 +73,7 @@
                                     {% endfor %}
                                 </ul>
                             {% else %}
-                                <i>There are no alerts for monitors in {{ selected_category|default:"the dashboard" }}.</i>
+                                <i>There are no alerts for monitors in {{ selected_category.name|default:"the dashboard" }}.</i>
                             {% endif %}
                         </div>
                     </div>

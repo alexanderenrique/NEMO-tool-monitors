@@ -8,6 +8,16 @@
             <li>
                 <a href="{% url 'tool_monitors' %}">Dashboard</a>
             </li>
+            {% if tool_category %}
+                {% for ancestor in tool_category.ancestors %}
+                    <li>
+                        <a href="{% url 'tool_monitors_category' ancestor.path %}">{{ ancestor.name }}</a>
+                    </li>
+                {% endfor %}
+                <li>
+                    <a href="{% url 'tool_monitors_category' tool_category.path %}">{{ tool_category.name }}</a>
+                </li>
+            {% endif %}
             <li>
                 <a href="{% url 'tool_monitors_for_tool' tool.id %}">{{ tool.name }}</a>
             </li>
@@ -25,20 +35,6 @@
                            class="form-control"
                            required
                            value="{{ monitor.name|default:'' }}" />
-                </div>
-            </div>
-            <div class="form-group">
-                <label class="control-label col-md-3" for="monitor_category">Category</label>
-                <div class="col-md-6">
-                    <select id="monitor_category" name="monitor_category" class="form-control">
-                        <option value="">(none)</option>
-                        {% for category in categories %}
-                            <option value="{{ category.id }}"
-                                    {% if monitor and monitor.monitor_category_id == category.id %}selected{% endif %}>
-                                {{ category }}
-                            </option>
-                        {% endfor %}
-                    </select>
                 </div>
             </div>
             <div class="form-group">
@@ -93,6 +89,50 @@
                 </div>
             </div>
             <div class="form-group">
+                <label class="control-label col-md-3">Data entry fields</label>
+                <div class="col-md-8">
+                    <p class="help-block" style="margin-bottom: 8px;">
+                        Define the fields shown when adding data and expected in uploaded CSVs.
+                        New monitors start with <strong>Value</strong> and <strong>Notes</strong>; remove or rename them as needed.
+                    </p>
+                    <table class="table table-condensed table-bordered" id="data-entry-fields-table" style="margin-bottom: 8px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 45%">Field name</th>
+                                <th style="width: 35%">Type</th>
+                                <th style="width: 20%"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-entry-fields-body">
+                            {% for field in data_entry_fields %}
+                                <tr class="data-entry-field-row">
+                                    <td>
+                                        <input type="text"
+                                               name="column_name[]"
+                                               class="form-control input-sm"
+                                               value="{{ field.name }}"
+                                               placeholder="e.g. Mean" />
+                                    </td>
+                                    <td>
+                                        <select name="column_type[]" class="form-control input-sm">
+                                            {% for value, label in column_type_choices %}
+                                                <option value="{{ value }}" {% if field.data_type == value %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-danger btn-xs js-remove-data-entry-field">Remove</button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="button" class="btn btn-default btn-sm" id="add-data-entry-field-btn">
+                        + Add data entry field
+                    </button>
+                </div>
+            </div>
+            <div class="form-group">
                 <div class="col-md-offset-3 col-md-6">
                     <button class="btn btn-success" type="submit">
                         {% if monitor %}Save changes{% else %}Create monitor{% endif %}
@@ -102,4 +142,39 @@
             </div>
         </form>
     </div>
+    <script>
+        const columnTypeChoices = [
+            {% for value, label in column_type_choices %}
+                { value: "{{ value }}", label: "{{ label }}" }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+
+        function buildTypeSelect(selectedValue) {
+            let opts = columnTypeChoices.map(function(c) {
+                const sel = c.value === selectedValue ? ' selected' : '';
+                return '<option value="' + c.value + '"' + sel + '>' + c.label + '</option>';
+            }).join('');
+            return '<select name="column_type[]" class="form-control input-sm">' + opts + '</select>';
+        }
+
+        function buildDataEntryFieldRow(name, type) {
+            name = name || '';
+            type = type || 'float';
+            return '<tr class="data-entry-field-row">'
+                + '<td><input type="text" name="column_name[]" class="form-control input-sm" value="' + name + '" placeholder="e.g. Mean" /></td>'
+                + '<td>' + buildTypeSelect(type) + '</td>'
+                + '<td class="text-center"><button type="button" class="btn btn-danger btn-xs js-remove-data-entry-field">Remove</button></td>'
+                + '</tr>';
+        }
+
+        document.getElementById('add-data-entry-field-btn').addEventListener('click', function() {
+            document.getElementById('data-entry-fields-body').insertAdjacentHTML('beforeend', buildDataEntryFieldRow());
+        });
+
+        document.getElementById('data-entry-fields-body').addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('js-remove-data-entry-field')) {
+                e.target.closest('tr').remove();
+            }
+        });
+    </script>
 {% endblock %}

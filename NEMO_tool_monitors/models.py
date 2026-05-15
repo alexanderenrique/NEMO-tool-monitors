@@ -22,47 +22,11 @@ from NEMO.utilities import EmailCategory, format_datetime, get_email_from_settin
 
 models_logger = getLogger(__name__)
 
-
-class MonitorCategory(BaseModel):
-    name = models.CharField(max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text="The name for this monitor category")
-    parent = models.ForeignKey(
-        "MonitorCategory", related_name="children", null=True, blank=True, on_delete=models.SET_NULL
-    )
-
-    def is_leaf(self):
-        return not self.children.exists()
-
-    def all_children(self) -> List:
-        if not self.children.exists():
-            return []
-        all_children = []
-        for child in self.children.all():
-            all_children.extend([child, *child.all_children()])
-        return all_children
-
-    def ancestors(self, include_self: bool = False) -> List:
-        if not self.parent:
-            return []
-        ancestors = [*self.parent.ancestors(False), self.parent]
-        if include_self:
-            ancestors.append(self)
-        return ancestors
-
-    def alert_triggered(self):
-        for monitor in self.monitor_set.all():
-            if monitor.alert_triggered():
-                return True
-        for child in self.children.all():
-            if child.alert_triggered():
-                return True
-        return False
-
-    def __str__(self):
-        return self.name if not self.parent else " | ".join([anc.name for anc in self.ancestors(include_self=True)])
-
-    class Meta:
-        verbose_name_plural = "Monitor categories"
-        ordering = ["name"]
+# Default data entry fields for new monitors (removable on the monitor configuration form).
+DEFAULT_DATA_ENTRY_FIELDS = (
+    ("Value", "float"),
+    ("Notes", "string"),
+)
 
 
 class Monitor(BaseModel):
@@ -76,7 +40,6 @@ class Monitor(BaseModel):
         related_name="monitors",
         help_text="The tool that this monitor reports data for.",
     )
-    monitor_category = models.ForeignKey(MonitorCategory, blank=True, null=True, on_delete=models.SET_NULL)
     data_label = models.CharField(
         blank=True, null=True, max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text="Label for graph and table data"
     )
@@ -108,9 +71,47 @@ class Monitor(BaseModel):
         ordering = ["tool__name", "name"]
 
 
+class MonitorColumn(BaseModel):
+    monitor = models.ForeignKey(Monitor, on_delete=models.CASCADE, related_name="columns")
+    name = models.CharField(
+        max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text="Field name as it appears in forms and CSV headers."
+    )
+    data_type = models.CharField(
+        max_length=20,
+        choices=[("float", "Float"), ("integer", "Integer"), ("string", "String")],
+        default="float",
+        help_text="Expected data type for this column.",
+    )
+    order = models.PositiveIntegerField(default=0, help_text="Display order on the chart and table.")
+
+    def is_plottable(self) -> bool:
+        return self.data_type in ("float", "integer")
+
+    def __str__(self):
+        return f"{self.monitor.name} – {self.name} ({self.data_type})"
+
+    class Meta:
+        ordering = ["order", "name"]
+        unique_together = [["monitor", "name"]]
+
+
 class MonitorData(BaseModel):
     monitor = models.ForeignKey(Monitor, on_delete=models.CASCADE)
-    value = models.FloatField()
+    column = models.ForeignKey(
+        MonitorColumn,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="data_points",
+        help_text="The column definition this data point belongs to. Null for legacy single-value rows.",
+    )
+    value = models.FloatField(null=True, blank=True)
+    string_value = models.CharField(
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
+        blank=True,
+        default="",
+        help_text="Populated for string-typed columns.",
+    )
     created_date = models.DateTimeField(
         default=timezone.now,
         db_index=True,
@@ -143,6 +144,8 @@ class MonitorData(BaseModel):
     )
 
     def display_value(self):
+        if self.column and self.column.data_type == "string":
+            return self.string_value
         return display_monitor_value(self.monitor, self.value)
 
     class Meta:
@@ -156,7 +159,7 @@ def monitor_data_post_save(sender, instance: MonitorData, created, **kwargs):
     from NEMO_tool_monitors.alerts import process_alerts
 
     monitor = instance.monitor
-    latest = MonitorData.objects.filter(monitor=monitor).order_by("-created_date").first()
+    latest = MonitorData.objects.filter(monitor=monitor, value__isnull=False).order_by("-created_date").first()
     if latest:
         monitor.last_read = latest.created_date
         monitor.last_value = latest.value

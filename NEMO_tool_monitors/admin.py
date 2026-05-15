@@ -6,10 +6,11 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from NEMO_tool_monitors.models import (
+    DEFAULT_DATA_ENTRY_FIELDS,
     Monitor,
     MonitorAlertEmail,
     MonitorAlertLog,
-    MonitorCategory,
+    MonitorColumn,
     MonitorData,
 )
 from NEMO.typing import QuerySetType
@@ -81,75 +82,54 @@ def enable_selected_alerts(model_admin, request, queryset: QuerySetType[MonitorA
 class MonitorAdminForm(forms.ModelForm):
     class Meta:
         model = Monitor
-        fields = "__all__"
+        exclude = ("last_read", "last_value")
 
 
-class MonitorCategoryAdminForm(forms.ModelForm):
-    class Meta:
-        model = MonitorCategory
-        fields = "__all__"
+class MonitorColumnInline(admin.TabularInline):
+    model = MonitorColumn
+    fields = ("name", "data_type", "order")
+    ordering = ("order", "name")
+    verbose_name = "Data entry field"
+    verbose_name_plural = "Data entry fields"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance.pk:
-            children_ids = [child.id for child in self.instance.all_children()]
-            if "parent" in self.fields:
-                self.fields["parent"].queryset = MonitorCategory.objects.exclude(
-                    id__in=[self.instance.pk, *children_ids]
-                )
+    def get_extra(self, request, obj=None, **kwargs):
+        if obj is None:
+            return len(DEFAULT_DATA_ENTRY_FIELDS)
+        return 1
 
+    def get_formset(self, request, obj=None, **kwargs):
+        formset_class = super().get_formset(request, obj, **kwargs)
 
-@register(MonitorCategory)
-class MonitorCategoryAdmin(admin.ModelAdmin):
-    form = MonitorCategoryAdminForm
-    list_display = ("name", "get_parent", "get_children")
+        class MonitorColumnFormSet(formset_class):
+            def __init__(self, *args, **inner_kwargs):
+                super().__init__(*args, **inner_kwargs)
+                if obj is None and not self.data:
+                    for index, (name, data_type) in enumerate(DEFAULT_DATA_ENTRY_FIELDS):
+                        if index < len(self.forms):
+                            self.forms[index].initial = {"name": name, "data_type": data_type, "order": index}
 
-    @display(ordering="children", description="Children")
-    def get_children(self, category: MonitorCategory) -> str:
-        return mark_safe(
-            ", ".join(
-                [
-                    f'<a href="{reverse("admin:tool_monitors_monitorcategory_change", args=[child.id])}">{child.name}</a>'
-                    for child in category.children.all()
-                ]
-            )
-        )
-
-    @display(ordering="parent", description="Parent")
-    def get_parent(self, category: MonitorCategory) -> str:
-        if not category.parent:
-            return ""
-        return mark_safe(
-            f'<a href="{reverse("admin:tool_monitors_monitorcategory_change", args=[category.parent.id])}">{category.parent.name}</a>'
-        )
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "parent":
-            kwargs["queryset"] = MonitorCategory.objects.filter()
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        return MonitorColumnFormSet
 
 
 @register(Monitor)
 class MonitorAdmin(admin.ModelAdmin):
     search_fields = ["name", "tool__name"]
     form = MonitorAdminForm
+    inlines = [MonitorColumnInline]
     list_display = (
         "id",
         "name",
         "tool",
         "visible",
-        "monitor_category",
         "last_read",
         "last_value",
     )
     list_filter = (
         "visible",
         ("tool", admin.RelatedOnlyFieldListFilter),
-        ("monitor_category", admin.RelatedOnlyFieldListFilter),
     )
     actions = [duplicate_monitor_configuration, hide_selected_monitors, show_selected_monitors]
     autocomplete_fields = ["tool"]
-    readonly_fields = ["last_read", "last_value"]
 
 
 @register(MonitorData)
@@ -157,7 +137,9 @@ class MonitorDataAdmin(admin.ModelAdmin):
     list_display = (
         "created_date",
         "monitor",
+        "get_column_name",
         "value",
+        "string_value",
         "get_display_value",
         "created_by",
         "created_on",
@@ -167,12 +149,16 @@ class MonitorDataAdmin(admin.ModelAdmin):
     date_hierarchy = "created_date"
     list_filter = (
         ("monitor", admin.RelatedOnlyFieldListFilter),
-        ("monitor__monitor_category", admin.RelatedOnlyFieldListFilter),
+        ("column", admin.RelatedOnlyFieldListFilter),
         ("created_by", admin.RelatedOnlyFieldListFilter),
     )
     autocomplete_fields = ["monitor", "created_by", "updated_by"]
     readonly_fields = ["created_on", "updated_on"]
     search_fields = ("monitor__name", "monitor__tool__name", "created_by__username", "notes")
+
+    @display(ordering="column__name", description="Data entry field")
+    def get_column_name(self, obj: MonitorData):
+        return obj.column.name if obj.column else ""
 
     @display(ordering="monitor__data_prefix", description="Display value")
     def get_display_value(self, obj: MonitorData):

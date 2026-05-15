@@ -10,7 +10,7 @@ via CSV. Existing data points are editable.
 
 ## Features
 
-- One "Monitors" page that browses nested categories and tools that have monitors.
+- One "Monitors" page that lists tools that have monitors.
 - Each tool can have any number of named monitors with chart, data, and alert tabs.
 - Data points record `created_by` / `created_on` and `updated_by` / `updated_on`.
 - Bulk CSV upload (two-column `timestamp,value`) and single-point web form on each monitor’s **Upload** tab.
@@ -57,7 +57,7 @@ Paths are relative to your NEMO site root (the same way sensors use `/sensors/`)
 
 | Purpose | Path |
 |--------|------|
-| Monitors dashboard (categories and tools) | `/tool_monitors/` and `/tool_monitors/<category_id>/` |
+| Monitors dashboard | `/tool_monitors/` |
 | Monitors for one tool | `/tool_monitors/tool/<tool_id>/` |
 | Monitor detail (default tab: chart) | `/monitor_details/<monitor_id>/` |
 | Chart, data table, alert log, or upload tab | `/monitor_details/<monitor_id>/chart/`, `/data/`, `/alert/`, `/upload/` |

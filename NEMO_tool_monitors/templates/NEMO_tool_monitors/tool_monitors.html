@@ -11,6 +11,16 @@
             <li>
                 <a href="{% url 'tool_monitors' %}">Dashboard</a>
             </li>
+            {% if tool_category %}
+                {% for ancestor in tool_category.ancestors %}
+                    <li>
+                        <a href="{% url 'tool_monitors_category' ancestor.path %}">{{ ancestor.name }}</a>
+                    </li>
+                {% endfor %}
+                <li>
+                    <a href="{% url 'tool_monitors_category' tool_category.path %}">{{ tool_category.name }}</a>
+                </li>
+            {% endif %}
             <li class="active">{{ tool.name }}</li>
         </ol>
         <div class="panel-body">
@@ -38,7 +48,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" id="qa-single-value-group">
                                 <label class="control-label col-sm-3" for="qa-value">Value</label>
                                 <div class="col-sm-9">
                                     <input class="form-control"
@@ -49,6 +59,7 @@
                                            required />
                                 </div>
                             </div>
+                            <div id="qa-column-fields"></div>
                             <div class="form-group">
                                 <label class="control-label col-sm-3" for="qa-date">Timestamp</label>
                                 <div class="col-sm-9">
@@ -60,7 +71,7 @@
                                     <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
                                 </div>
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" id="qa-notes-group">
                                 <label class="control-label col-sm-3" for="qa-notes">Notes</label>
                                 <div class="col-sm-9">
                                     <textarea class="form-control"
@@ -85,14 +96,74 @@
                     (function ()
                     {
                         const tpl = "{{ add_data_action_template|escapejs }}";
+                        const monitorsColumns = {{ monitors_columns_json|safe }};
                         const form = document.getElementById("tool-monitors-quick-add");
-                        if (!form)
+                        const qaMonitorSelect = document.getElementById("qa-monitor");
+                        const qaSingleValueGroup = document.getElementById("qa-single-value-group");
+                        const qaValue = document.getElementById("qa-value");
+                        const qaColumnFields = document.getElementById("qa-column-fields");
+                        const qaNotesGroup = document.getElementById("qa-notes-group");
+
+                        if (!form) return;
+
+                        function escapeHtml(str)
                         {
-                            return;
+                            return String(str)
+                                .replace(/&/g, "&amp;")
+                                .replace(/</g, "&lt;")
+                                .replace(/>/g, "&gt;")
+                                .replace(/"/g, "&quot;");
                         }
+
+                        function updateValueFields()
+                        {
+                            const mid = qaMonitorSelect.value;
+                            const cols = (monitorsColumns[mid] || []);
+                            qaColumnFields.innerHTML = "";
+                            if (cols.length > 0)
+                            {
+                                qaSingleValueGroup.style.display = "none";
+                                qaNotesGroup.style.display = "none";
+                                qaValue.removeAttribute("required");
+                                qaValue.value = "";
+                                cols.forEach(function (col)
+                                {
+                                    const fieldId = "qa-col-" + col.id;
+                                    const isString = col.data_type === "string";
+                                    const isInt = col.data_type === "integer";
+                                    let inputHtml;
+                                    if (isString)
+                                    {
+                                        inputHtml = '<input class="form-control" type="text"'
+                                            + ' id="' + fieldId + '" name="col_value_' + col.id + '" />';
+                                    }
+                                    else
+                                    {
+                                        inputHtml = '<input class="form-control" type="number"'
+                                            + ' step="' + (isInt ? "1" : "any") + '"'
+                                            + ' id="' + fieldId + '" name="col_value_' + col.id + '" />';
+                                    }
+                                    qaColumnFields.innerHTML +=
+                                        '<div class="form-group">'
+                                        + '<label class="control-label col-sm-3" for="' + fieldId + '">'
+                                        + escapeHtml(col.name) + '</label>'
+                                        + '<div class="col-sm-9">' + inputHtml + '</div>'
+                                        + '</div>';
+                                });
+                            }
+                            else
+                            {
+                                qaSingleValueGroup.style.display = "";
+                                qaNotesGroup.style.display = "";
+                                qaValue.setAttribute("required", "");
+                            }
+                        }
+
+                        qaMonitorSelect.addEventListener("change", updateValueFields);
+
                         form.addEventListener("submit", function (e)
                         {
-                            const mid = document.getElementById("qa-monitor").value;
+                            const mid = qaMonitorSelect.value;
                             if (!mid)
                             {
                                 e.preventDefault();
@@ -108,7 +179,6 @@
                     <thead>
                         <tr class="info">
                             <th>Name</th>
-                            <th>Category</th>
                             <th>Last reading</th>
                             <th>Last value</th>
                             <th></th>
@@ -121,7 +191,6 @@
                                     <a href="{% url 'monitor_details' monitor.id %}">{{ monitor.name }}</a>
                                     {% if monitor.description %}<br><small class="text-muted">{{ monitor.description }}</small>{% endif %}
                                 </td>
-                                <td>{{ monitor.monitor_category|default:"-" }}</td>
                                 <td>{{ monitor.last_read|date:"SHORT_DATETIME_FORMAT"|default:"no data" }}</td>
                                 <td>{{ monitor.last_value_display|default:"-" }}</td>
                                 <td class="text-right">

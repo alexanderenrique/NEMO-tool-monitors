@@ -9,18 +9,8 @@ from NEMO_tool_monitors.models import (
     Monitor,
     MonitorAlertEmail,
     MonitorAlertLog,
-    MonitorCategory,
     MonitorData,
 )
-
-
-class MonitorCategorySerializer(FlexFieldsSerializerMixin, ModelSerializer):
-    class Meta:
-        model = MonitorCategory
-        fields = "__all__"
-        expandable_fields = {
-            "parent": "NEMO_tool_monitors.api.MonitorCategorySerializer",
-        }
 
 
 class MonitorSerializer(FlexFieldsSerializerMixin, ModelSerializer):
@@ -29,7 +19,6 @@ class MonitorSerializer(FlexFieldsSerializerMixin, ModelSerializer):
         fields = "__all__"
         expandable_fields = {
             "tool": "NEMO.serializers.ToolSerializer",
-            "monitor_category": "NEMO_tool_monitors.api.MonitorCategorySerializer",
         }
 
 
@@ -67,17 +56,6 @@ class MonitorAlertLogSerializer(FlexFieldsSerializerMixin, ModelSerializer):
         }
 
 
-class MonitorCategoryViewSet(ModelViewSet):
-    filename = "monitor_categories"
-    queryset = MonitorCategory.objects.all()
-    serializer_class = MonitorCategorySerializer
-    filterset_fields = {
-        "id": key_filters,
-        "name": string_filters,
-        "parent": key_filters,
-    }
-
-
 class MonitorViewSet(ModelViewSet):
     filename = "monitors"
     queryset = Monitor.objects.all()
@@ -87,7 +65,6 @@ class MonitorViewSet(ModelViewSet):
         "name": string_filters,
         "visible": boolean_filters,
         "tool": key_filters,
-        "monitor_category": key_filters,
         "data_label": string_filters,
         "data_prefix": string_filters,
         "data_suffix": string_filters,
@@ -111,6 +88,9 @@ class MonitorDataViewSet(ModelViewSet):
         "value": number_filters,
         "notes": string_filters,
     }
+
+
+class MonitorAlertEmailViewSet(ModelViewSet):
     filename = "monitor_alert_emails"
     queryset = MonitorAlertEmail.objects.all()
     serializer_class = MonitorAlertEmailSerializer
