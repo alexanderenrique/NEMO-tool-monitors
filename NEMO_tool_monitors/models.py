@@ -50,7 +50,9 @@ class Monitor(BaseModel):
         blank=True, null=True, max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text="Suffix for monitor data values"
     )
     description = models.TextField(
-        blank=True, null=True, help_text="Optional description of what this monitor tracks."
+        blank=True,
+        null=True,
+        help_text="Optional description of what this monitor tracks. HTML may be used (for example for links); shown at the top of the monitor details page.",
     )
     last_read = models.DateTimeField(null=True, blank=True)
     last_value = models.FloatField(null=True, blank=True)

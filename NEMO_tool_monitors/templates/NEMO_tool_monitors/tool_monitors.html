@@ -24,6 +24,16 @@
             <li class="active">{{ tool.name }}</li>
         </ol>
         <div class="panel-body">
+            {% if messages %}
+                <div class="monitor-messages" style="margin-bottom: 15px;">
+                    {% for message in messages %}
+                        <div class="alert {% if 'error' in message.tags %}alert-danger{% elif 'warning' in message.tags %}alert-warning{% elif 'success' in message.tags %}alert-success{% else %}alert-info{% endif %}"
+                             role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
             <div class="form-inline" style="margin-bottom: 15px;">
                 <h3 style="display:inline-block;margin-right:15px;">Monitors for {{ tool.name }}</h3>
             </div>
@@ -48,45 +58,47 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="form-group" id="qa-single-value-group">
-                                <label class="control-label col-sm-3" for="qa-value">Value</label>
-                                <div class="col-sm-9">
-                                    <input class="form-control"
-                                           type="number"
-                                           step="any"
-                                           id="qa-value"
-                                           name="value"
-                                           required />
+                            <div id="qa-entry-section" style="display: none;">
+                                <div class="form-group" id="qa-single-value-group">
+                                    <label class="control-label col-sm-3" for="qa-value">Value</label>
+                                    <div class="col-sm-9">
+                                        <input class="form-control"
+                                               type="number"
+                                               step="any"
+                                               id="qa-value"
+                                               name="value"
+                                               required />
+                                    </div>
                                 </div>
-                            </div>
-                            <div id="qa-column-fields"></div>
-                            <div class="form-group">
-                                <label class="control-label col-sm-3" for="qa-date">Timestamp</label>
-                                <div class="col-sm-9">
-                                    <input class="form-control"
-                                           type="text"
-                                           id="qa-date"
-                                           name="created_date"
-                                           placeholder="leave blank for now" />
-                                    <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
+                                <div id="qa-column-fields"></div>
+                                <div class="form-group">
+                                    <label class="control-label col-sm-3" for="qa-date">Timestamp</label>
+                                    <div class="col-sm-9">
+                                        <input class="form-control"
+                                               type="text"
+                                               id="qa-date"
+                                               name="created_date"
+                                               placeholder="leave blank for now" />
+                                        <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group" id="qa-notes-group">
-                                <label class="control-label col-sm-3" for="qa-notes">Notes</label>
-                                <div class="col-sm-9">
-                                    <textarea class="form-control"
-                                              id="qa-notes"
-                                              name="notes"
-                                              rows="2"
-                                              placeholder="Optional"></textarea>
+                                <div class="form-group" id="qa-notes-group">
+                                    <label class="control-label col-sm-3" for="qa-notes">Notes</label>
+                                    <div class="col-sm-9">
+                                        <textarea class="form-control"
+                                                  id="qa-notes"
+                                                  name="notes"
+                                                  rows="2"
+                                                  placeholder="Optional"></textarea>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <div class="col-sm-offset-3 col-sm-9">
-                                    <button type="submit" class="btn btn-success">Add data point</button>
-                                    <span class="help-block" style="margin-top:8px;">
-                                        Bulk CSV upload and editing points: open the monitor and use the <strong>Upload</strong> or <strong>Data</strong> tab.
-                                    </span>
+                                <div class="form-group">
+                                    <div class="col-sm-offset-3 col-sm-9">
+                                        <button type="submit" class="btn btn-success">Add data point</button>
+                                        <span class="help-block" style="margin-top:8px;">
+                                            Bulk CSV upload and editing points: open the monitor and use the <strong>Upload</strong> or <strong>Data</strong> tab.
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </form>
@@ -103,6 +115,7 @@
                         const qaValue = document.getElementById("qa-value");
                         const qaColumnFields = document.getElementById("qa-column-fields");
                         const qaNotesGroup = document.getElementById("qa-notes-group");
+                        const qaEntrySection = document.getElementById("qa-entry-section");
 
                         if (!form) return;
 
@@ -159,7 +172,20 @@
                             }
                         }
 
-                        qaMonitorSelect.addEventListener("change", updateValueFields);
+                        function syncEntryVisibility()
+                        {
+                            const mid = qaMonitorSelect.value;
+                            if (!mid)
+                            {
+                                qaEntrySection.style.display = "none";
+                                qaValue.removeAttribute("required");
+                                return;
+                            }
+                            qaEntrySection.style.display = "";
+                            updateValueFields();
+                        }
+
+                        qaMonitorSelect.addEventListener("change", syncEntryVisibility);
 
                         form.addEventListener("submit", function (e)
                         {
@@ -189,7 +215,6 @@
                             <tr class="{% if monitor.alert_triggered %}danger{% endif %}">
                                 <td>
                                     <a href="{% url 'monitor_details' monitor.id %}">{{ monitor.name }}</a>
-                                    {% if monitor.description %}<br><small class="text-muted">{{ monitor.description }}</small>{% endif %}
                                 </td>
                                 <td>{{ monitor.last_read|date:"SHORT_DATETIME_FORMAT"|default:"no data" }}</td>
                                 <td>{{ monitor.last_value_display|default:"-" }}</td>

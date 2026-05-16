@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
+import unicodedata
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -16,6 +18,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.http import urlencode
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from NEMO.decorators import disable_session_expiry_refresh
@@ -103,6 +106,75 @@ def _parse_input_datetime(raw: str) -> Optional[datetime]:
         except ValueError:
             continue
     return None
+
+
+def _normalize_monitor_field_label(raw: str) -> str:
+    """Normalize a monitor/CSV field label for comparison (unicode, spaces, case)."""
+    s = unicodedata.normalize("NFKC", (raw or "").strip())
+    s = re.sub(r"[\u00a0\u2000-\u200b\ufeff]", " ", s)
+    return " ".join(s.split()).lower()
+
+
+def _csv_header_inner_looks_like_unit(inner: str) -> bool:
+    """True if parenthetical at end of a header is likely a unit, e.g. (%) or (A/min), not (RIE)."""
+    s = inner.strip().lower()
+    if not s:
+        return False
+    if "%" in s:
+        return True
+    if "/" in s:
+        return True
+    if re.fullmatch(r"[\d\.]+\s*[a-zµμ°/]*|[a-zµμ]\s*\d+", s):
+        return True
+    return False
+
+
+def _strip_trailing_unit_parenthetical(label_norm: str) -> Optional[str]:
+    """If label_norm ends with ' (unit)', return the part before it when unit is recognized."""
+    m = re.search(r"\s+\(([^)]*)\)$", label_norm)
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    if not _csv_header_inner_looks_like_unit(inner):
+        return None
+    return label_norm[: m.start()].strip()
+
+
+def _match_csv_header_to_monitor_column(header: str, by_normalized_name: Dict[str, MonitorColumn]) -> Optional[MonitorColumn]:
+    """
+    Match a CSV column header to a MonitorColumn.
+
+    Handles minor export/format differences vs. defined names: NFC/NFKC unicode, whitespace,
+    and optional trailing '(unit)' segments such as '(%)' or '(A/min)' on the CSV side or on
+    the defined field name.
+    """
+    norm = _normalize_monitor_field_label(header)
+    if not norm:
+        return None
+    if norm in by_normalized_name:
+        return by_normalized_name[norm]
+    stripped = _strip_trailing_unit_parenthetical(norm)
+    if stripped and stripped in by_normalized_name:
+        return by_normalized_name[stripped]
+    for _key, col in by_normalized_name.items():
+        key_stripped = _strip_trailing_unit_parenthetical(_key)
+        if not key_stripped:
+            continue
+        if norm == key_stripped or (stripped and stripped == key_stripped):
+            return col
+    return None
+
+
+def _monitor_details_data_redirect_covering_times(monitor_id: int, timestamps: List[datetime]) -> str:
+    """Data-tab URL including ?start=&end= so freshly uploaded rows are inside the chart/table filter."""
+    base = reverse("monitor_details", args=[monitor_id, "data"])
+    if not timestamps:
+        return base
+    pad = timedelta(hours=1)
+    min_ts = min(timestamps) - pad
+    max_ts = max(timestamps) + pad
+    query = urlencode({"start": int(min_ts.timestamp()), "end": int(max_ts.timestamp())})
+    return f"{base}?{query}"
 
 
 def _tools_with_visible_monitors():
@@ -591,6 +663,9 @@ def upload_monitor_data_csv(request, monitor_id):
     csv_text = request.POST.get("csv_text", "").strip()
 
     if csv_file:
+        if getattr(csv_file, "size", None) == 0:
+            messages.error(request, "The selected CSV file is empty.")
+            return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "upload"]))
         try:
             decoded = csv_file.read().decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -602,10 +677,8 @@ def upload_monitor_data_csv(request, monitor_id):
         messages.error(request, "Please provide a CSV file or paste CSV data.")
         return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "upload"]))
 
-    defined_columns = {col.name.lower(): col for col in monitor.columns.all()}
-
-    if defined_columns:
-        return _upload_multi_column_csv(request, monitor, decoded, defined_columns)
+    if monitor.columns.exists():
+        return _upload_multi_column_csv(request, monitor, decoded)
     else:
         return _upload_legacy_csv(request, monitor, decoded)
 
@@ -671,12 +744,17 @@ def _upload_legacy_csv(request, monitor: Monitor, decoded: str):
 
     _refresh_monitor_last_value(monitor)
     messages.success(request, f"Uploaded {len(rows)} data points to {monitor.name}.")
-    return HttpResponseRedirect(reverse("monitor_details", args=[monitor.pk, "data"]))
+    return HttpResponseRedirect(
+        _monitor_details_data_redirect_covering_times(monitor.pk, [ts for ts, _, _ in rows])
+    )
 
 
-def _upload_multi_column_csv(request, monitor: Monitor, decoded: str, defined_columns: dict):
+def _upload_multi_column_csv(request, monitor: Monitor, decoded: str):
     """Upload handler when the monitor has defined columns."""
     monitor_id = monitor.pk
+    columns_qs = monitor.columns.order_by("order", "name")
+    by_normalized_name = {_normalize_monitor_field_label(col.name): col for col in columns_qs}
+
     reader = csv.reader(io.StringIO(decoded))
     all_rows = [row for row in reader if row and any(cell.strip() for cell in row)]
     if not all_rows:
@@ -689,24 +767,23 @@ def _upload_multi_column_csv(request, monitor: Monitor, decoded: str, defined_co
         messages.error(request, "CSV must include a header row as the first line (e.g. Date, Value, Notes, ...).")
         return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "upload"]))
 
-    date_header = header_row[0].strip()
     col_headers = [cell.strip() for cell in header_row[1:]]
 
-    # Map header names to MonitorColumn objects (case-insensitive)
     col_map: List[Optional[MonitorColumn]] = []
     unrecognized = []
     for h in col_headers:
-        col = defined_columns.get(h.lower())
+        col = _match_csv_header_to_monitor_column(h, by_normalized_name) if h else None
         col_map.append(col)
-        if col is None and h:
+        if h and col is None:
             unrecognized.append(h)
 
     if unrecognized:
         messages.warning(request, f"Unrecognized field(s) will be skipped: {', '.join(unrecognized)}")
 
-    missing = [name for name in defined_columns if not any(h.lower() == name for h in col_headers)]
-    if missing:
-        messages.warning(request, f"Defined field(s) not found in CSV: {', '.join(defined_columns[n].name for n in missing)}")
+    matched_ids = {c.pk for c in col_map if c is not None}
+    missing_names = [col.name for col in columns_qs if col.pk not in matched_ids]
+    if missing_names:
+        messages.warning(request, f"Defined field(s) not found in CSV: {', '.join(missing_names)}")
 
     errors: List[str] = []
     # Each entry: (timestamp, MonitorColumn, value_or_none, string_value)
@@ -767,7 +844,9 @@ def _upload_multi_column_csv(request, monitor: Monitor, decoded: str, defined_co
 
     _refresh_monitor_last_value(monitor)
     messages.success(request, f"Uploaded {len(data_rows)} data points to {monitor.name}.")
-    return HttpResponseRedirect(reverse("monitor_details", args=[monitor_id, "data"]))
+    return HttpResponseRedirect(
+        _monitor_details_data_redirect_covering_times(monitor_id, [ts for ts, _, _, _ in data_rows])
+    )
 
 
 def _refresh_monitor_last_value(monitor: Monitor):

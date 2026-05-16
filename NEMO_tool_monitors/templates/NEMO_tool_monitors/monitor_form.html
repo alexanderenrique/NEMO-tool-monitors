@@ -74,7 +74,8 @@
                     <textarea id="description"
                               name="description"
                               class="form-control"
-                              rows="3">{{ monitor.description|default_if_none:'' }}</textarea>
+                              rows="4">{{ monitor.description|default_if_none:'' }}</textarea>
+                    <span class="help-block">Shown at the top of the monitor details page. HTML is allowed (e.g. &lt;a href&gt; links).</span>
                 </div>
             </div>
             <div class="form-group">

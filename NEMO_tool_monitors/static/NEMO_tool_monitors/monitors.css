@@ -44,3 +44,21 @@
     max-width: 28em;
     font-size: 12px;
 }
+
+.monitor-description
+{
+    padding: 12px 15px 16px;
+    margin: 0;
+    border-bottom: 1px solid #dcdcdc;
+    font-size: 14px;
+}
+
+.monitor-description :first-child
+{
+    margin-top: 0;
+}
+
+.monitor-description :last-child
+{
+    margin-bottom: 0;
+}

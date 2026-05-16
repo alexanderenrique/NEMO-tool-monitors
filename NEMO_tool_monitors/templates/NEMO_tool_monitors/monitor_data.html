@@ -30,7 +30,20 @@
             </li>
             <li class="active">{{ monitor.name }}</li>
         </ol>
+        {% if monitor.description %}
+            <div class="monitor-description">{{ monitor.description|safe }}</div>
+        {% endif %}
         <div class="panel-body">
+            {% if messages %}
+                <div class="monitor-messages" style="margin-bottom: 15px;">
+                    {% for message in messages %}
+                        <div class="alert {% if 'error' in message.tags %}alert-danger{% elif 'warning' in message.tags %}alert-warning{% elif 'success' in message.tags %}alert-success{% else %}alert-info{% endif %}"
+                             role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
             <div style="margin-bottom: 15px">
                 <div class="form-inline">
                     <label class="control-label" for="start">Date range:</label>
@@ -188,7 +201,7 @@
                                                        type="text"
                                                        id="add-date"
                                                        name="created_date"
-                                                       placeholder="leave blank for now" />
+                                                       placeholder="leave blank for current time" />
                                                 <span class="help-block">e.g. 2026-05-14 12:30 or 05/14/2026 12:30 PM</span>
                                             </div>
                                         </div>
@@ -268,6 +281,20 @@
         const now_moment_date = moment();
         const can_upload = {% if can_upload %}true{% else %}false{% endif %};
         const csrf_token = '{{ csrf_token }}';
+
+        function switch_tab(e)
+        {
+            e.preventDefault();
+            const target = $(this).attr("href");
+            if (!target || target.charAt(0) !== "#")
+            {
+                return;
+            }
+            $("#tabs li").removeClass("active");
+            $(this).closest("li").addClass("active");
+            $("#monitor-data > .tab-pane").removeClass("active");
+            $(target).addClass("active");
+        }
 
         let tab_jq = $("#tabs a");
         tab_jq.click(switch_tab);
